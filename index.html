@@ -116,8 +116,8 @@
       <div id="bar-dragon" class="bar-dragon" style="width: 0%"></div>
     </div>
     <div class="stats-summary">
-      <span id="stats-koi">Koi: 0 / 10560</span>
-      <span id="stats-dragon">Dragons: 0 / 10560</span>
+      <span id="stats-koi">Koi: 0 / -</span>
+      <span id="stats-dragon">Dragons: 0 / -</span>
     </div>
   </header>
 
@@ -321,7 +321,7 @@
         startCols.forEach(startCol => {
           for (let c = startCol; c < startCol + 3 && c < row.length; c++) {
             const name = cellStr(row[c]);
-            if (!name || name.length < 2 || /^\d+$/.test(name) || /^(koi|dragon|common|rare|-)/i.test(name)) continue;
+            if (!name || name.length < 2 || name.endsWith('-') || name.endsWith('-') || /^\d+$/.test(name) || /^(koi|dragon|common|rare|-)/i.test(name)) continue;
 
             let headRowIdx = -1;
             let cStartCol = -1;
@@ -866,13 +866,13 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
       try {
         userProgress = loadJSON(LS_PROGRESS, {});
         customPatterns = loadJSON(LS_PATTERNS, {});
         settings = loadJSON(LS_SETTINGS, {});
-        rebuildPatterns();
 
+        // 1. Zorg dat de URL-velden netjes worden ingevuld als ze er zijn
         const driveInput = document.getElementById('drive-url');
         const patternInput = document.getElementById('pattern-url');
         const autoSyncOpt = document.getElementById('opt-autosync');
@@ -885,10 +885,14 @@
         if (overwriteOpt) overwriteOpt.checked = settings.overwrite !== false;
         if (patternSyncOpt) patternSyncOpt.checked = !!settings.patternSync;
 
+        // 2. HAAL ALTIJD DIRECT DE VERSE PATRONEN OP BIJ OPSTARTEN (gebruik 'true' om de UI stil te verversen)
+        // Zorg dat syncFromDrive overweg kan met jouw hardcoded patroon-URL
+        await syncFromDrive(true);
+
+        // 3. Bouw en render pas nádat de verse data binnen is
+        rebuildPatterns();
         renderPatterns();
-        if ((settings.driveUrl || settings.patternUrl) && settings.autoSync) {
-          syncFromDrive(true);
-        }
+
       } catch (e) {
         console.error("Fout bij opstarten:", e);
       }
