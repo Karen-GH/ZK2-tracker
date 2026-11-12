@@ -6,7 +6,7 @@
   <title>Zen Koi 2 Collection Tracker</title>
   <meta name="theme-color" content="#0d1117">
   <meta name="description" content="Houd je Zen Koi 2 verzameling bij en synchroniseer met Google Drive.">
-  <link rel="manifest" href="data:application/manifest+json;utf8,{\"name\":\"Zen Koi 2 Tracker\",\"short_name\":\"ZK2 Tracker\",\"start_url\":\".\",\"display\":\"standalone\",\"background_color\":\"#0d1117\",\"theme_color\":\"#0d1117\"}">
+  <link rel="manifest" href="./manifest.json">
   <!-- SheetJS voor Excel import -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- html2canvas voor het exporteren van patronen als afbeelding -->
@@ -917,5 +917,13 @@
       }
     });
   </script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js")
+      .catch(error => console.error("Service Worker:", error));
+  });
+}
+</script>
 </body>
 </html>
