@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zen Koi 2 Collection Tracker</title>
+  <meta name="theme-color" content="#0d1117">
+  <meta name="description" content="Houd je Zen Koi 2 verzameling bij en synchroniseer met Google Drive.">
+  <link rel="manifest" href="data:application/manifest+json;utf8,{\"name\":\"Zen Koi 2 Tracker\",\"short_name\":\"ZK2 Tracker\",\"start_url\":\".\",\"display\":\"standalone\",\"background_color\":\"#0d1117\",\"theme_color\":\"#0d1117\"}">
+  <!-- SheetJS voor Excel import -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- html2canvas voor het exporteren van patronen als afbeelding -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    :root {
+      /* Standaard (Dark Mode) */
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --accent-koi: #e67e22;
+      --accent-dragon: #9b59b6;
+      --accent-blue: #58a6ff;
+      --success: #2ea043;
+      --cell-bg: #0d1117;
+    }
+
+    body.light-mode {
+      /* Light Mode Kleuren */
+      --bg: #f6f8fa;
+      --card-bg: #ffffff;
+      --border: #d0d7de;
+      --text: #24292f;
+      --text-muted: #57606a;
+      --accent-blue: #0969da;
+      --cell-bg: #ffffff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding-bottom: 70px; }
+    header { background: var(--card-bg); border-bottom: 1px solid var(--border); padding: 15px; position: sticky; top: 0; z-index: 100; }
+    .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    h1 { font-size: 1.2rem; color: var(--text); }
+    .controls { display: flex; flex-direction: column; gap: 10px; }
+    input[type="search"] { background: var(--bg); border: 1px solid var(--border); color: #fff; padding: 8px 12px; border-radius: 6px; width: 100%; font-size: 0.9rem; }
+    .filter-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+    .tab-btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; white-space: nowrap; }
+    .tab-btn.active { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
+    
+    .progress-bar-container { background: var(--bg); border-radius: 6px; height: 12px; overflow: hidden; margin-top: 8px; display: flex; }
+    .bar-koi { background: var(--accent-koi); height: 100%; transition: width 0.3s; }
+    .bar-dragon { background: var(--accent-dragon); height: 100%; transition: width 0.3s; }
+    .stats-summary { font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-top: 4px; }
+
+    main { padding: 15px; }
+    .pattern-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+    .pattern-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; cursor: pointer; transition: transform 0.1s, border-color 0.2s; display: flex; flex-direction: column; justify-content: space-between; height: 80px; }
+    .pattern-title { font-weight: bold; font-size: 0.95rem; color: var(--text); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; white-space: nowrap; overflow: hidden; }
+    .pattern-title span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .pattern-card:active { transform: scale(0.98); }
+    .pattern-stats { font-size: 0.75rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 3px; }
+    .badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: normal; }
+    .badge-zero { background: #ff2121; }
+    .badge-koi { background: var(--accent-koi); }
+    .badge-dragon { background: var(--accent-dragon); }
+    .badge-progress { background: #5c81f8; }
+
+    /* Modal / Detail View */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 200; overflow-y: auto; }
+    .modal-content { background: var(--card-bg); margin: 20px auto; width: 92%; max-width: 500px; border-radius: 12px; border: 1px solid var(--border); padding: 16px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px; }
+    .close-btn { background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; }
+
+    .grid-section-title { font-size: 0.9rem; color: var(--accent-blue); margin: 12px 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+    .koi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 15px; }
+    .grid-cell { height: 45px; border-radius: 6px; border: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.6rem; text-align: center; cursor: pointer; user-select: none; padding: 2px; background: var(--cell-bg); color: var(--text-muted); overflow: hidden; }
+    .grid-cell.koi { background: rgba(230, 126, 34, 0.2); border-color: var(--accent-koi); color: var(--accent-koi); font-weight: bold; }
+    .grid-cell.dragon { background: rgba(155, 89, 182, 0.25); border-color: var(--accent-dragon); color: var(--accent-dragon); font-weight: bold; }
+
+    /* Bottom Navigation */
+    nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card-bg); border-top: 1px solid var(--border); display: flex; justify-content: space-around; padding: 10px 0; }
+    .nav-item { color: var(--text-muted); text-decoration: none; font-size: 0.75rem; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; border: none; background: none; }
+    .nav-item.active { color: var(--accent-blue); }
+
+    .btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; width: 100%; margin-top: 8px; }
+    .btn-primary { background: #238636; color: #fff; border-color: #2ea043; }
+    .btn-danger { background: #da3633; color: #fff; border-color: #f85149; }
+
+    .hint { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; }
+    .drive-url-input { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; width: 100%; font-size: 0.85rem; margin-bottom: 8px; }
+    .opt { display: flex; gap: 8px; align-items: center; font-size: 0.8rem; margin-top: 8px; }
+    .status { font-size: 0.8rem; margin-top: 10px; line-height: 1.4; }
+    .status.ok { color: #56d364; } .status.err { color: #f85149; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-top">
+      <h1>Zen Koi 2 Tracker</h1>
+      <button class="icon-btn" onclick="toggleTheme()" title="Wissel Light/Dark mode">🌓</button>
+      <span id="total-percent" style="font-size: 0.9rem; font-weight: bold; color: var(--accent-blue);">0%</span>
+    </div>
+    <div class="controls">
+      <input type="search" id="search-input" placeholder="Zoek patroonnaam..." oninput="renderPatterns()">
+      <div class="filter-tabs">
+        <button class="tab-btn active" onclick="setFilter('all', this)">Alles</button>
+        <button class="tab-btn" onclick="setFilter('collectors', this)">Collectors</button>
+        <button class="tab-btn" onclick="setFilter('progressives', this)">Progressives</button>
+        <button class="tab-btn" onclick="setFilter('todo', this)">Onvoltooid</button>
+        <button class="tab-btn" onclick="setFilter('done', this)">Voltooid</button>
+      </div>
+    </div>
+    <div class="progress-bar-container">
+      <div id="bar-koi" class="bar-koi" style="width: 0%"></div>
+      <div id="bar-dragon" class="bar-dragon" style="width: 0%"></div>
+    </div>
+    <div class="stats-summary">
+      <span id="stats-koi">Koi: 0 / 10560</span>
+      <span id="stats-dragon">Dragons: 0 / 10560</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="pattern-container" class="pattern-grid"></div>
+  </main>
+
+  <!-- Detail Modal -->
+  <div id="detail-modal" class="modal">
+    <div class="modal-content" id="modal-export-content">
+      <div class="modal-header">
+        <h2 id="modal-pattern-title">Patroon</h2>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="grid-section-title">Common</div>
+      <div id="common-grid" class="koi-grid"></div>
+      <div class="grid-section-title">Rare</div>
+      <div id="rare-grid" class="koi-grid"></div>
+    </div>
+  </div>
+
+  <!-- Instellingen Modal -->
+  <div id="settings-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Gegevensbeheer</h2>
+        <button class="close-btn" onclick="closeSettings()">&times;</button>
+      </div>
+
+      <div class="grid-section-title" style="margin-top:0">Google Drive / Voortgangs-sheet</div>
+      <p class="hint">Plak de link van je eigen ZK2-sheet (optioneel). Zorg dat deze gedeeld is als <b>“Iedereen met de link kan bekijken”</b>.</p>
+      <input type="url" id="drive-url" class="drive-url-input" placeholder="https://docs.google.com/spreadsheets/d/…" onchange="saveDriveUrl()">
+      <label class="opt"><input type="checkbox" id="opt-autosync" onchange="saveDriveUrl()"> Automatisch synchroniseren bij openen</label>
+      <label class="opt"><input type="checkbox" id="opt-overwrite" onchange="saveDriveUrl()"> Sheet overschrijft mijn lokale voortgang</label>
+
+      <button class="btn btn-primary" onclick="saveDriveUrl(); syncFromDrive(false)">🔄 Nu synchroniseren</button>
+
+      <div id="sync-status" class="status"></div>
+
+      <hr style="border-color: var(--border); margin: 15px 0;">
+      <div class="grid-section-title" style="margin-top:0">Bestand / back-up</div>
+      <input type="file" id="excel-file-input" accept=".xlsx, .xls, .json" style="display: none;" onchange="handleFileImport(event)">
+      <button class="btn" onclick="document.getElementById('excel-file-input').click()">📥 Importeer Excel / JSON</button>
+      <button class="btn" onclick="exportJSON()">📤 Download JSON Back-up</button>
+      <hr style="border-color: var(--border); margin: 15px 0;">
+      <button class="btn btn-danger" onclick="resetAllData()">🗑️ Reset Alle Voortgang</button>
+    </div>
+  </div>
+
+  <nav>
+    <button class="nav-item active" onclick="showHome()"><span style="font-size: 1.2rem;">🐟</span>Collectie</button>
+    <button class="nav-item" onclick="openSettings()"><span style="font-size: 1.2rem;">⚙️</span>Instellingen</button>
+  </nav>
+
+  <script>
+    function toggleTheme() {
+      document.body.classList.toggle('light-mode');
+      const isLight = document.body.classList.contains('light-mode');
+      localStorage.setItem('zk2_theme', isLight ? 'light' : 'dark');
+    }
+
+    // Laad de opgeslagen voorkeur bij het opstarten
+    document.addEventListener('DOMContentLoaded', () => {
+      const savedTheme = localStorage.getItem('zk2_theme');
+      if (savedTheme === 'light') {
+        document.body.classList.add('light-mode');
+      }
+      // ... (je overige opstartcode)
+    });
+
+    const rawPatternsData = [{"name": "Aishite", "c_suf": ["gin", "dai", "ukon", "kura"], "r_suf": ["buru", "papu", "cheri", "umi"], "pref": ["Shi", "Sei", "Bu", "Ma"]}, {"name": "Aisuru", "c_suf": ["dai", "ukon", "buru", "shiro"], "r_suf": ["pinku", "umi", "mura", "macha"], "pref": ["Ma", "Mu", "Ku", "Sei"]}, {"name": "Akachan", "c_suf": ["shiro", "kuro", "ukon", "dai"], "r_suf": ["pinku", "sumi", "usu", "koji"], "pref": ["Ma", "Ryo", "Ai", "Ku"]}, {"name": "Akino", "c_suf": ["shiro", "kosho", "marun", "koji"], "r_suf": ["mido", "buru", "usu", "pinku"], "pref": ["Ki", "Cho", "Ko", "Ore"]}, {"name": "Akinoha", "c_suf": ["kuro", "marun", "shiro", "katsu"], "r_suf": ["kura", "ouka", "iero", "usu"], "pref": ["Ryo", "Ma", "Gu", "Ko"]}, {"name": "Akua", "c_suf": ["dai", "koji", "iero", "mido"], "r_suf": ["mura", "umi", "ouka", "papu"], "pref": ["Aka", "Ryo", "Bu", "Mu"]}, {"name": "Akuu", "c_suf": ["marun", "cheri", "iero", "kuro"], "r_suf": ["usu", "sumi", "mosu", "umi"], "pref": ["Ma", "Sei", "Ore", "Gu"]}, {"name": "Amado", "c_suf": ["shiro", "gure", "ukon", "maze"], "r_suf": ["mosu", "macha", "sumi", "usu"], "pref": ["Shi", "Cha", "Ku", "Ma"]}, {"name": "Amimono", "c_suf": ["sairo", "koji", "kosho", "dai"], "r_suf": ["mosu", "buru", "sumi", "usu"], "pref": ["Aka", "Ao", "Ma", "Ki"]}, {"name": "Aroha", "c_suf": ["shiro", "marun", "dai", "iero"], "r_suf": ["mosu", "mura", "kura", "macha"], "pref": ["Ko", "Sei", "Ma", "Ore"]}, {"name": "Atae", "c_suf": ["shiro", "sairo", "dai", "gure"], "r_suf": ["iero", "pinku", "mido", "usu"], "pref": ["Ne", "Mu", "Bu", "Ma"]}, {"name": "Atii", "c_suf": ["kuro", "ukon", "dai", "buru"], "r_suf": ["mura", "usu", "umi", "ouka"], "pref": ["Mu", "Ai", "Shi", "Ma"]}, {"name": "Azarashi", "c_suf": ["gure", "sairo", "katsu", "kuro"], "r_suf": ["mosu", "papu", "ouka", "maze"], "pref": ["Ki", "Shi", "Ne", "Ryo"]}, {"name": "Baabaa", "c_suf": ["dai", "koji", "katsu", "kosho"], "r_suf": ["pinku", "buru", "papu", "mosu"], "pref": ["Shi", "Sei", "Cha", "Ma"]}, {"name": "Baburi", "c_suf": ["shiro", "iero", "dai", "kuro"], "r_suf": ["ukon", "sairo", "cheri", "umi"], "pref": ["Ore", "Ao", "Ne", "Ma"]}, {"name": "Baburu", "c_suf": ["shiro", "kura", "iero", "pinku"], "r_suf": ["usu", "umi", "mura", "buru"], "pref": ["Ai", "Ne", "Ao", "Bu"]}, {"name": "Baku", "c_suf": ["dai", "shiro", "koji", "buru"], "r_suf": ["mido", "pinku", "umi", "macha"], "pref": ["Aka", "Mu", "Gu", "Ki"]}, {"name": "Batikku", "c_suf": ["iero", "dai", "koji", "sairo"], "r_suf": ["mosu", "buru", "pinku", "umi"], "pref": ["Ma", "Ko", "Bu", "Ku"]}, {"name": "Bauhausu", "c_suf": ["kuro", "shiro", "katsu", "dai"], "r_suf": ["umi", "papu", "iero", "mido"], "pref": ["Ao", "Ne", "Mu", "Ma"]}, {"name": "Beri", "c_suf": ["dai", "shiro", "kosho", "koji"], "r_suf": ["ukon", "ouka", "mido", "papu"], "pref": ["Mu", "Ma", "Ku", "Gu"]}, {"name": "Beta", "c_suf": ["dai", "pinku", "ukon", "kuro"], "r_suf": ["ouka", "usu", "marun", "mura"], "pref": ["Aka", "Ma", "Hai", "Mu"]}, {"name": "Biri", "c_suf": ["shiro", "katsu", "dai", "kosho"], "r_suf": ["sairo", "sumi", "mido", "marun"], "pref": ["Ma", "Cho", "Ku", "Mu"]}, {"name": "Borei", "c_suf": ["shiro", "dai", "kuro", "ukon"], "r_suf": ["katsu", "usu", "umi", "mura"], "pref": ["Sei", "Ku", "Ryo", "Mu"]}, {"name": "Botan", "c_suf": ["dai", "iero", "koji", "kuro"], "r_suf": ["pinku", "macha", "buru", "mura"], "pref": ["Ne", "Ore", "Ma", "Ki"]}, {"name": "Buke", "c_suf": ["dai", "koji", "ukon", "papu"], "r_suf": ["umi", "mido", "ouka", "buru"], "pref": ["Ne", "Ma", "Mu", "Ku"]}, {"name": "Bukimi", "c_suf": ["shiro", "buru", "dai", "koji"], "r_suf": ["mido", "mosu", "ouka", "mura"], "pref": ["Ku", "Gu", "Ryo", "Mu"]}, {"name": "Bunki", "c_suf": ["shiro", "kuro", "koji", "ukon"], "r_suf": ["papu", "mido", "buru", "ouka"], "pref": ["Ai", "Sei", "Ki", "Ryo"]}, {"name": "Bureku", "c_suf": ["shiro", "kuro", "gure", "sairo"], "r_suf": ["umi", "pinku", "ami", "papu"], "pref": ["Ne", "Ku", "Gu", "Sei"]}, {"name": "Burokku", "c_suf": ["gure", "kuro", "ukon", "dai"], "r_suf": ["umi", "mura", "katsu", "buru"], "pref": ["Shi", "Mu", "Ko", "Gu"]}, {"name": "Buronko", "c_suf": ["marun", "kuro", "shiro", "ukon"], "r_suf": ["katsu", "kura", "koji", "kosho"], "pref": ["Ne", "Cho", "Ko", "Aka"]}, {"name": "Buta", "c_suf": ["shiro", "dai", "katsu", "ouka"], "r_suf": ["papu", "buru", "sumi", "mura"], "pref": ["Shi", "Ore", "Ma", "Ku"]}, {"name": "Byakko", "c_suf": ["shiro", "kuro", "dai", "ukon"], "r_suf": ["kura", "kosho", "papu", "buru"], "pref": ["Ne", "Ore", "Ki", "Ku"]}, {"name": "Byoga", "c_suf": ["gure", "kuro", "dai", "katsu"], "r_suf": ["macha", "buru", "mura", "umi"], "pref": ["Shi", "Ku", "Cha", "Ao"]}, {"name": "Chansu", "c_suf": ["kuro", "dai", "ukon", "macha"], "r_suf": ["mura", "ouka", "umi", "buru"], "pref": ["Shi", "Ki", "Ryo", "Mu"]}, {"name": "Cheka", "c_suf": ["dai", "kuro", "gin", "ukon"], "r_suf": ["macha", "umi", "koji", "ouka"], "pref": ["Shi", "Ku", "Ko", "Mu"]}, {"name": "Chekku", "c_suf": ["dai", "katsu", "koji", "sairo"], "r_suf": ["maze", "mosu", "mura", "gure"], "pref": ["Ku", "Ko", "Ki", "Ne"]}, {"name": "Chikyu", "c_suf": ["shiro", "ukon", "usu", "buru"], "r_suf": ["umi", "macha", "mura", "ouka"], "pref": ["Ma", "Ore", "Ryo", "Bu"]}, {"name": "Chiru", "c_suf": ["shiro", "iero", "koji", "dai"], "r_suf": ["usu", "papu", "sumi", "mura"], "pref": ["Ne", "Ku", "Mu", "Ma"]}, {"name": "Chocho", "c_suf": ["shiro", "ukon", "dai", "kuro"], "r_suf": ["maze", "mura", "mido", "usu"], "pref": ["Ma", "Ne", "Ku", "Mu"]}, {"name": "Chokka", "c_suf": ["shiro", "marun", "kuro", "gure"], "r_suf": ["umi", "buru", "sumi", "usu"], "pref": ["Bu", "Mu", "Sei", "Ku"]}, {"name": "Chusoku", "c_suf": ["marun", "dai", "koji", "mosu"], "r_suf": ["buru", "umi", "kosho", "maze"], "pref": ["Ki", "Ma", "Mu", "Shi"]}, {"name": "Daimon", "c_suf": ["usu", "buru", "sumi", "nebi"], "r_suf": ["mura", "papu", "neon", "gure"], "pref": ["Shi", "Ao", "Ma", "Ai"]}, {"name": "Deta", "c_suf": ["shiro", "kuro", "dai", "ukon"], "r_suf": ["umi", "buru", "mido", "papu"], "pref": ["Ryo", "Gu", "Ku", "Mu"]}, {"name": "Dienue", "c_suf": ["shiro", "dai", "kosho", "iero"], "r_suf": ["mido", "umi", "macha", "sumi"], "pref": ["Sei", "Shi", "Ne", "Ku"]}, {"name": "Dokeshi", "c_suf": ["yuki", "kuro", "dai", "koji"], "r_suf": ["mura", "ukon", "macha", "papu"], "pref": ["Shi", "Ore", "Ku", "Ma"]}, {"name": "Dokuro", "c_suf": ["shiro", "marun", "gure", "koji"], "r_suf": ["usu", "pinku", "umi", "mura"], "pref": ["Shi", "Ku", "Ai", "Ki"]}, {"name": "Doragon", "c_suf": ["katsu", "dai", "ukon", "koji"], "r_suf": ["mido", "buru", "mosu", "mura"], "pref": ["Gu", "Aka", "Shi", "Cha"]}, {"name": "Dorama", "c_suf": ["kuro", "shiro", "marun", "ukon"], "r_suf": ["mura", "umi", "buru", "pinku"], "pref": ["Mu", "Ma", "Ne", "Ku"]}, {"name": "Egguhan", "c_suf": ["shiro", "iero", "mosu", "marun"], "r_suf": ["ouka", "mura", "buru", "umi"], "pref": ["Ore", "Ai", "Ma", "Mu"]}, {"name": "Ekkusu", "c_suf": ["dai", "ukon", "kuro", "shiro"], "r_suf": ["koji", "usu", "sumi", "umi"], "pref": ["Aka", "Ryo", "Mu", "Ku"]}, {"name": "Enaga", "c_suf": ["marun", "kuro", "koji", "kosho"], "r_suf": ["umi", "papu", "buru", "pinku"], "pref": ["Shi", "Mu", "Ma", "Bu"]}, {"name": "Essha", "c_suf": ["shiro", "gure", "dai", "sairo"], "r_suf": ["mosu", "macha", "koji", "gin"], "pref": ["Ku", "Ne", "Gu", "Ko"]}, {"name": "Feza", "c_suf": ["katsu", "kura", "koji", "mura"], "r_suf": ["ukon", "mido", "sumi", "usu"], "pref": ["Cho", "Gu", "Bu", "Ko"]}, {"name": "Fukuro", "c_suf": ["dai", "macha", "koji", "kuro"], "r_suf": ["mura", "buru", "ouka", "mosu"], "pref": ["Ki", "Ma", "Ai", "Cha"]}, {"name": "Furamin", "c_suf": ["dai", "kosho", "koji", "mosu"], "r_suf": ["ouka", "mura", "mido", "buru"], "pref": ["Gu", "Shi", "Ore", "Ma"]}, {"name": "Furitta", "c_suf": ["shiro", "usu", "sumi", "kura"], "r_suf": ["koji", "ukon", "mido", "cheri"], "pref": ["Ne", "Sei", "Bu", "Gu"]}, {"name": "Furora", "c_suf": ["marun", "sairo", "ukon", "koji"], "r_suf": ["papu", "usu", "sumi", "macha"], "pref": ["Shi", "Bu", "Ku", "Ao"]}, {"name": "Fuwa", "c_suf": ["shiro", "dai", "ukon", "kosho"], "r_suf": ["umi", "mura", "pinku", "mido"], "pref": ["Shi", "Ao", "Ryo", "Ore"]}, {"name": "Gekko", "c_suf": ["gin", "gure", "sairo", "koji"], "r_suf": ["usu", "umi", "buru", "sumi"], "pref": ["Shi", "Ki", "Mu", "Sei"]}, {"name": "Genso", "c_suf": ["shiro", "gure", "iero", "ukon"], "r_suf": ["usu", "mido", "ouka", "sumi"], "pref": ["Ku", "Mu", "Cha", "Ryo"]}, {"name": "Ginga", "c_suf": ["shiro", "gin", "kura", "ukon"], "r_suf": ["umi", "cheri", "mura", "buru"], "pref": ["Ne", "Ao", "Mu", "Ku"]}, {"name": "Goburu", "c_suf": ["dai", "kosho", "katsu", "koji"], "r_suf": ["mosu", "ukon", "mido", "sairo"], "pref": ["Ko", "Ma", "Ryo", "Ore"]}, {"name": "Gochiso", "c_suf": ["dai", "kosho", "katsu", "kuro"], "r_suf": ["pinku", "mura", "sumi", "mido"], "pref": ["Ki", "Ore", "Ma", "Shi"]}, {"name": "Goshikku", "c_suf": ["dai", "kuro", "ukon", "gin"], "r_suf": ["sumi", "usu", "ouka", "pinku"], "pref": ["Mu", "Ne", "Ma", "Ku"]}, {"name": "Gurade", "c_suf": ["dai", "koji", "kuro", "macha"], "r_suf": ["cheri", "mido", "umi", "mura"], "pref": ["Ne", "Mu", "Ki", "Bu"]}, {"name": "Guriddo", "c_suf": ["yuki", "kuro", "ukon", "mido"], "r_suf": ["umi", "mura", "buru", "usu"], "pref": ["Ne", "Ku", "Ryo", "Ma"]}, {"name": "Gyogun", "c_suf": ["shiro", "ukon", "mosu", "ouka"], "r_suf": ["umi", "papu", "macha", "buru"], "pref": ["Mu", "Gu", "Ao", "Bu"]}, {"name": "Habu", "c_suf": ["dai", "shiro", "kuro", "ukon"], "r_suf": ["sairo", "mido", "pinku", "sumi"], "pref": ["Shi", "Ku", "Ma", "Mu"]}, {"name": "Hachi", "c_suf": ["koji", "ukon", "shiro", "kuro"], "r_suf": ["buru", "mura", "macha", "usu"], "pref": ["Cho", "Mu", "Ko", "Ore"]}, {"name": "Haisen", "c_suf": ["kuro", "gin", "macha", "katsu"], "r_suf": ["buru", "umi", "mosu", "mido"], "pref": ["Ao", "Ku", "Ne", "Bu"]}, {"name": "Hakucho", "c_suf": ["dai", "koji", "mido", "kuro"], "r_suf": ["ouka", "papu", "mura", "usu"], "pref": ["Shi", "Ki", "Ma", "Ai"]}, {"name": "Hamon", "c_suf": ["dai", "ukon", "sairo", "kuro"], "r_suf": ["umi", "mido", "buru", "mura"], "pref": ["Gu", "Mu", "Ku", "Ne"]}, {"name": "Hanabi", "c_suf": ["dai", "katsu", "shiro", "ukon"], "r_suf": ["usu", "mura", "umi", "pinku"], "pref": ["Ne", "Ki", "Ma", "Ai"]}, {"name": "Haname", "c_suf": ["dai", "kuro", "katsu", "kura"], "r_suf": ["kosho", "ouka", "buru", "papu"], "pref": ["Ne", "Ma", "Mu", "Ki"]}, {"name": "Hanami", "c_suf": ["gin", "dai", "iero", "sumi"], "r_suf": ["pinku", "maze", "mura", "buru"], "pref": ["Shi", "Aka", "Mu", "Ma"]}, {"name": "Hanawa", "c_suf": ["dai", "shiro", "mido", "koji"], "r_suf": ["umi", "mosu", "mura", "buru"], "pref": ["Gu", "Ryo", "Ne", "Aka"]}, {"name": "Hanikom", "c_suf": ["kuro", "koji", "mido", "katsu"], "r_suf": ["ouka", "buru", "usu", "papu"], "pref": ["Ne", "Ki", "Ai", "Shi"]}, {"name": "Hanrin", "c_suf": ["kura", "ukon", "koji", "gin"], "r_suf": ["umi", "mido", "ouka", "mura"], "pref": ["Ki", "Shi", "Gu", "Bu"]}, {"name": "Happa", "c_suf": ["shiro", "kuro", "koji", "katsu"], "r_suf": ["ukon", "mido", "umi", "gin"], "pref": ["Gu", "Ku", "Ki", "Ryo"]}, {"name": "Happi", "c_suf": ["dai", "ukon", "usu", "koji"], "r_suf": ["macha", "umi", "maze", "mura"], "pref": ["Shi", "Ki", "Ao", "Ore"]}, {"name": "Hareta", "c_suf": ["dai", "koji", "mosu", "mido"], "r_suf": ["umi", "buru", "usu", "papu"], "pref": ["Ki", "Cho", "Ko", "Ryo"]}, {"name": "Hari", "c_suf": ["shiro", "kuro", "sairo", "koji"], "r_suf": ["buru", "mura", "usu", "umi"], "pref": ["Ao", "Sei", "Ryo", "Bu"]}, {"name": "Hatsu", "c_suf": ["shiro", "dai", "koji", "usu"], "r_suf": ["mura", "pinku", "kura", "kuro"], "pref": ["Ma", "Aka", "Ore", "Mu"]}, {"name": "Heisei", "c_suf": ["koji", "maze", "macha", "umi"], "r_suf": ["mido", "mura", "mosu", "papu"], "pref": ["Ryo", "Mu", "Ku", "Cha"]}, {"name": "Hina", "c_suf": ["katsu", "marun", "kosho", "kuro"], "r_suf": ["mosu", "ouka", "buru", "usu"], "pref": ["Ki", "Mu", "Cho", "Ryo"]}, {"name": "Hippi", "c_suf": ["shiro", "dai", "cheri", "mosu"], "r_suf": ["mura", "ukon", "mido", "pinku"], "pref": ["Mu", "Ma", "Ki", "Ne"]}, {"name": "Hisho", "c_suf": ["maze", "iero", "ukon", "kura"], "r_suf": ["umi", "papu", "usu", "gin"], "pref": ["Cha", "Ore", "Mu", "Shi"]}, {"name": "Hishu", "c_suf": ["gin", "kuro", "kosho", "koji"], "r_suf": ["umi", "mosu", "buru", "gure"], "pref": ["Cha", "Shi", "Ryo", "Ko"]}, {"name": "Hitsuji", "c_suf": ["shiro", "dai", "koji", "marun"], "r_suf": ["pinku", "umi", "sairo", "buru"], "pref": ["Aka", "Ore", "Ki", "Bu"]}, {"name": "Hiyake", "c_suf": ["pinku", "katsu", "dai", "kosho"], "r_suf": ["ukon", "ouka", "mosu", "usu"], "pref": ["Shi", "Ao", "Ore", "Cho"]}, {"name": "Hiyoko", "c_suf": ["dai", "ukon", "koji", "marun"], "r_suf": ["gin", "pinku", "sairo", "kuro"], "pref": ["Ne", "Ki", "Cho", "Ku"]}, {"name": "Hogusu", "c_suf": ["dai", "shiro", "ukon", "sairo"], "r_suf": ["koji", "sumi", "mido", "usu"], "pref": ["Ai", "Mu", "Cha", "Ku"]}, {"name": "Hoppu", "c_suf": ["sairo", "marun", "buru", "koji"], "r_suf": ["cheri", "mura", "mosu", "ami"], "pref": ["Shi", "Ne", "Sei", "Ki"]}, {"name": "Hora", "c_suf": ["kuro", "shiro", "dai", "ukon"], "r_suf": ["buru", "papu", "umi", "usu"], "pref": ["Gu", "Mu", "Ore", "Ku"]}, {"name": "Hoseki", "c_suf": ["kura", "ouka", "katsu", "shiro"], "r_suf": ["ukon", "usu", "mura", "sumi"], "pref": ["Ao", "Ku", "Ryo", "Ma"]}, {"name": "Hoshizo", "c_suf": ["shiro", "iero", "ukon", "katsu"], "r_suf": ["mura", "umi", "pinku", "buru"], "pref": ["Bu", "Sei", "Ne", "Ma"]}, {"name": "Hosshin", "c_suf": ["ukon", "usu", "dai", "koji"], "r_suf": ["umi", "mido", "mura", "pinku"], "pref": ["Aka", "Shi", "Ao", "Ku"]}, {"name": "Hyogara", "c_suf": ["shiro", "kuro", "ukon", "koji"], "r_suf": ["sumi", "sairo", "buru", "mosu"], "pref": ["Shi", "Cha", "Ne", "Ku"]}, {"name": "Hyogen", "c_suf": ["shiro", "kuro", "dai", "sairo"], "r_suf": ["katsu", "buru", "sumi", "marun"], "pref": ["Ki", "Ore", "Ku", "Ne"]}, {"name": "Hyokan", "c_suf": ["shiro", "kuro", "iero", "gin"], "r_suf": ["sumi", "marun", "usu", "mura"], "pref": ["Ma", "Bu", "Ku", "Ore"]}, {"name": "Ichigo", "c_suf": ["shiro", "dai", "ami", "katsu"], "r_suf": ["ouka", "mosu", "sumi", "mido"], "pref": ["Aka", "Ne", "Ma", "Mu"]}, {"name": "Inko", "c_suf": ["gin", "ukon", "marun", "dai"], "r_suf": ["buru", "mido", "umi", "kura"], "pref": ["Mu", "Ryo", "Ma", "Bu"]}, {"name": "Inku", "c_suf": ["kuro", "shiro", "gure", "dai"], "r_suf": ["buru", "kura", "sumi", "mosu"], "pref": ["Ku", "Ne", "Ore", "Ki"]}, {"name": "Itoo", "c_suf": ["shiro", "gure", "katsu", "iero"], "r_suf": ["dai", "marun", "buru", "usu"], "pref": ["Ne", "Ore", "Mu", "Cha"]}, {"name": "Iwau", "c_suf": ["iero", "shiro", "kosho", "ami"], "r_suf": ["cheri", "umi", "mido", "koji"], "pref": ["Sei", "Aka", "Mu", "Bu"]}, {"name": "Jagi", "c_suf": ["shiro", "kuro", "mido", "kosho"], "r_suf": ["buru", "umi", "macha", "mura"], "pref": ["Ryo", "Ku", "Ai", "Ma"]}, {"name": "Jigi", "c_suf": ["shiro", "dai", "ukon", "gure"], "r_suf": ["usu", "mura", "pinku", "mido"], "pref": ["Aka", "Ore", "Ku", "Ne"]}, {"name": "Jimoto", "c_suf": ["shiro", "dai", "ukon", "buru"], "r_suf": ["umi", "macha", "pinku", "mura"], "pref": ["Ma", "Sei", "Ryo", "Ki"]}, {"name": "Jinjya", "c_suf": ["mosu", "koji", "sairo", "dai"], "r_suf": ["marun", "sumi", "buru", "mura"], "pref": ["Shi", "Ko", "Cho", "Ma"]}, {"name": "Jiotori", "c_suf": ["shiro", "gin", "kosho", "gure"], "r_suf": ["usu", "mura", "ouka", "sairo"], "pref": ["Shi", "Mu", "Sei", "Ku"]}, {"name": "Jippa", "c_suf": ["shiro", "kuro", "koji", "katsu"], "r_suf": ["buru", "umi", "mido", "mura"], "pref": ["Aka", "Ao", "Ki", "Ryo"]}, {"name": "Josei", "c_suf": ["shiro", "marun", "koji", "katsu"], "r_suf": ["mosu", "mura", "pinku", "cheri"], "pref": ["Ma", "Cho", "Ne", "Bu"]}, {"name": "Jueru", "c_suf": ["shiro", "iero", "kuro", "mosu"], "r_suf": ["umi", "pinku", "buru", "koji"], "pref": ["Ryo", "Mu", "Ne", "Ma"]}, {"name": "Jugoya", "c_suf": ["marun", "dai", "kura", "mosu"], "r_suf": ["papu", "buru", "ouka", "usu"], "pref": ["Cha", "Ai", "Ryo", "Mu"]}, {"name": "Kabocha", "c_suf": ["yuki", "ukon", "katsu", "koji"], "r_suf": ["mosu", "pinku", "kosho", "mido"], "pref": ["Aka", "Ma", "Gu", "Ore"]}, {"name": "Kaen", "c_suf": ["shiro", "dai", "ukon", "kuro"], "r_suf": ["umi", "mura", "buru", "ouka"], "pref": ["Ore", "Ne", "Ko", "Bu"]}, {"name": "Kaeru", "c_suf": ["dai", "koji", "sairo", "gure"], "r_suf": ["buru", "usu", "macha", "papu"], "pref": ["Shi", "Bu", "Ku", "Ao"]}, {"name": "Kagami", "c_suf": ["kuro", "buru", "kosho", "sumi"], "r_suf": ["usu", "papu", "ouka", "macha"], "pref": ["Ne", "Ma", "Ki", "Ai"]}, {"name": "Kaika", "c_suf": ["shiro", "macha", "ouka", "koji"], "r_suf": ["pinku", "mosu", "umi", "ami"], "pref": ["Ma", "Ki", "Mu", "Gu"]}, {"name": "Kaizoku", "c_suf": ["shiro", "kuro", "ukon", "dai"], "r_suf": ["mosu", "buru", "sairo", "usu"], "pref": ["Ne", "Aka", "Ao", "Cho"]}, {"name": "Kajitsu", "c_suf": ["dai", "koji", "shiro", "ukon"], "r_suf": ["usu", "mido", "ouka", "pinku"], "pref": ["Aka", "Ma", "Ne", "Bu"]}, {"name": "Kamen", "c_suf": ["sairo", "shiro", "katsu", "gure"], "r_suf": ["macha", "umi", "ukon", "mura"], "pref": ["Gu", "Ku", "Cho", "Ko"]}, {"name": "Kani", "c_suf": ["shiro", "gure", "dai", "kuro"], "r_suf": ["usu", "umi", "mido", "kosho"], "pref": ["Aka", "Ne", "Mu", "Ryo"]}, {"name": "Kanki", "c_suf": ["gin", "ukon", "koji", "gure"], "r_suf": ["mido", "mosu", "mura", "umi"], "pref": ["Ore", "Ryo", "Gu", "Ki"]}, {"name": "Kanmon", "c_suf": ["shiro", "iero", "koji", "kuro"], "r_suf": ["macha", "usu", "kosho", "mura"], "pref": ["Ne", "Cho", "Bu", "Gu"]}, {"name": "Kanzo", "c_suf": ["shiro", "dai", "ukon", "kuro"], "r_suf": ["pinku", "mido", "buru", "umi"], "pref": ["Ku", "Ne", "Ore", "Ma"]}, {"name": "Kao", "c_suf": ["dai", "kuro", "katsu", "gure"], "r_suf": ["macha", "kura", "buru", "ouka"], "pref": ["Shi", "Ki", "Mu", "Gu"]}, {"name": "Karaton", "c_suf": ["maze", "shiro", "koji", "kuro"], "r_suf": ["ukon", "mura", "buru", "katsu"], "pref": ["Shi", "Ku", "Cho", "Ao"]}, {"name": "Karasu", "c_suf": ["kuro", "dai", "mosu", "katsu"], "r_suf": ["pinku", "kura", "mura", "sumi"], "pref": ["Ki", "Ao", "Shi", "Ne"]}, {"name": "Kasa", "c_suf": ["gin", "koji", "maze", "kuro"], "r_suf": ["umi", "usu", "mido", "mura"], "pref": ["Ao", "Ki", "Ne", "Bu"]}, {"name": "Kaseki", "c_suf": ["kuro", "katsu", "sairo", "dai"], "r_suf": ["ukon", "mura", "mosu", "kura"], "pref": ["Ku", "Mu", "Ne", "Ko"]}, {"name": "Kauboi", "c_suf": ["dai", "koji", "gure", "kuro"], "r_suf": ["kura", "pinku", "buru", "macha"], "pref": ["Shi", "Cho", "Ku", "Ki"]}, {"name": "Kazagu", "c_suf": ["shiro", "dai", "usu", "iero"], "r_suf": ["mura", "ouka", "umi", "mido"], "pref": ["Sei", "Ore", "Ma", "Ne"]}, {"name": "Kazaru", "c_suf": ["dai", "gure", "sairo", "marun"], "r_suf": ["mido", "mosu", "buru", "pinku"], "pref": ["Shi", "Cha", "Aka", "Ao"]}, {"name": "Keshiki", "c_suf": ["shiro", "ukon", "sairo", "dai"], "r_suf": ["usu", "buru", "mido", "mura"], "pref": ["Shi", "Ai", "Ore", "Ku"]}, {"name": "Kessho", "c_suf": ["shiro", "buru", "iero", "dai"], "r_suf": ["sumi", "umi", "mido", "cheri"], "pref": ["Ne", "Ao", "Mu", "Bu"]}, {"name": "Kigen", "c_suf": ["neon", "ukon", "mido", "shiro"], "r_suf": ["dai", "nebi", "ami", "mosu"], "pref": ["Ryo", "Ki", "Aka", "Gu"]}, {"name": "Kinko", "c_suf": ["gin", "kuro", "pinku", "mura"], "r_suf": ["cheri", "umi", "buru", "macha"], "pref": ["Ryo", "Ma", "Mu", "Ao"]}, {"name": "Kirigami", "c_suf": ["kura", "katsu", "koji", "marun"], "r_suf": ["sumi", "macha", "buru", "mosu"], "pref": ["Shi", "Ma", "Mu", "Ryo"]}, {"name": "Kirinu", "c_suf": ["dai", "ukon", "kura", "kuro"], "r_suf": ["mosu", "cheri", "mura", "marun"], "pref": ["Shi", "Aka", "Mu", "Ku"]}, {"name": "Kiruto", "c_suf": ["kura", "ukon", "katsu", "dai"], "r_suf": ["buru", "ouka", "mosu", "umi"], "pref": ["Ki", "Ma", "Shi", "Ai"]}, {"name": "Kitsune", "c_suf": ["katsu", "dai", "mosu", "kuro"], "r_suf": ["ouka", "sumi", "usu", "buru"], "pref": ["Ki", "Shi", "Ao", "Mu"]}, {"name": "Kocho", "c_suf": ["kura", "gure", "koji", "marun"], "r_suf": ["sumi", "buru", "usu", "cheri"], "pref": ["Sei", "Ryo", "Ko", "Shi"]}, {"name": "Kodani", "c_suf": ["dai", "ukon", "koji", "shiro"], "r_suf": ["sairo", "mido", "mosu", "buru"], "pref": ["Gu", "Ryo", "Ore", "Ma"]}, {"name": "Kodomo", "c_suf": ["shiro", "ukon", "dai", "kuro"], "r_suf": ["usu", "buru", "macha", "sumi"], "pref": ["Ore", "Bu", "Ma", "Ne"]}, {"name": "Koibori", "c_suf": ["shiro", "kura", "katsu", "cheri"], "r_suf": ["mosu", "umi", "usu", "sairo"], "pref": ["Ne", "Ku", "Bu", "Ki"]}, {"name": "Kokai", "c_suf": ["koji", "gin", "ouka", "ukon"], "r_suf": ["buru", "usu", "mura", "mido"], "pref": ["Ku", "Ryo", "Ne", "Bu"]}, {"name": "Kokkaku", "c_suf": ["shiro", "dai", "ukon", "macha"], "r_suf": ["mura", "mosu", "buru", "usu"], "pref": ["Ne", "Ryo", "Ma", "Mu"]}, {"name": "Komono", "c_suf": ["dai", "gure", "shiro", "mura"], "r_suf": ["umi", "pinku", "mido", "usu"], "pref": ["Ai", "Aka", "Ne", "Ryo"]}, {"name": "Komori", "c_suf": ["dai", "kuro", "gin", "koji"], "r_suf": ["pinku", "mido", "papu", "cheri"], "pref": ["Shi", "Ku", "Mu", "Ryo"]}, {"name": "Koneku", "c_suf": ["kuro", "shiro", "kosho", "gin"], "r_suf": ["buru", "usu", "mosu", "sumi"], "pref": ["Shi", "Ao", "Ku", "Ai"]}, {"name": "Konma", "c_suf": ["usu", "yuki", "buru", "mura"], "r_suf": ["mido", "papu", "macha", "pinku"], "pref": ["Bu", "Sei", "Ai", "Ao"]}, {"name": "Konoha", "c_suf": ["katsu", "shiro", "mido", "sairo"], "r_suf": ["mura", "buru", "ouka", "papu"], "pref": ["Gu", "Bu", "Ao", "Ne"]}, {"name": "Koraru", "c_suf": ["kuro", "ukon", "dai", "shiro"], "r_suf": ["mido", "ouka", "umi", "buru"], "pref": ["Ao", "Mu", "Ryo", "Ne"]}, {"name": "Kosen", "c_suf": ["shiro", "marun", "iero", "sumi"], "r_suf": ["koji", "katsu", "pinku", "mosu"], "pref": ["Ne", "Aka", "Ori", "Ma"]}, {"name": "Kosumo", "c_suf": ["shiro", "ukon", "dai", "gure"], "r_suf": ["sumi", "pinku", "koji", "usu"], "pref": ["Ne", "Ki", "Mu", "Ku"]}, {"name": "Koto", "c_suf": ["shiro", "dai", "kuro", "kura"], "r_suf": ["macha", "pinku", "koji", "usu"], "pref": ["Ma", "Aka", "Ryo", "Ne"]}, {"name": "Koun", "c_suf": ["kuro", "shiro", "ukon", "sairo"], "r_suf": ["umi", "pinku", "marun", "koji"], "pref": ["Cha", "Ore", "Aka", "Ne"]}, {"name": "Kubiwa", "c_suf": ["shiro", "gure", "ukon", "marun"], "r_suf": ["usu", "mido", "katsu", "pinku"], "pref": ["Cho", "Ne", "Ma", "Sei"]}, {"name": "Kujira", "c_suf": ["marun", "koji", "ukon", "usu"], "r_suf": ["mido", "umi", "cheri", "pinku"], "pref": ["Shi", "Mu", "Ku", "Sei"]}, {"name": "Kumano", "c_suf": ["koji", "dai", "iero", "ami"], "r_suf": ["pinku", "buru", "umi", "mura"], "pref": ["Ku", "Shi", "Ore", "Ryo"]}, {"name": "Kumo", "c_suf": ["kuro", "dai", "koji", "gure"], "r_suf": ["usu", "mosu", "ouka", "mura"], "pref": ["Ryo", "Mu", "Sei", "Ne"]}, {"name": "Kumori", "c_suf": ["gin", "dai", "katsu", "ukon"], "r_suf": ["buru", "sumi", "mido", "kura"], "pref": ["Shi", "Sei", "Ne", "Ku"]}, {"name": "Kurinpu", "c_suf": ["shiro", "ukon", "katsu", "pinku"], "r_suf": ["iero", "cheri", "mido", "usu"], "pref": ["Bu", "Cho", "Ore", "Ko"]}, {"name": "Kyandi", "c_suf": ["papu", "dai", "iero", "ami"], "r_suf": ["umi", "mura", "pinku", "macha"], "pref": ["Shi", "Ki", "Ma", "Aka"]}, {"name": "Kyobona", "c_suf": ["dai", "koji", "kosho", "gure"], "r_suf": ["macha", "papu", "sairo", "katsu"], "pref": ["Aka", "Ore", "Sei", "Shi"]}, {"name": "Kyoryu", "c_suf": ["katsu", "ukon", "gure", "kosho"], "r_suf": ["umi", "mosu", "papu", "macha"], "pref": ["Gu", "Ma", "Ko", "Ki"]}, {"name": "Kyubik", "c_suf": ["katsu", "ukon", "shiro", "kuro"], "r_suf": ["mido", "umi", "maze", "buru"], "pref": ["Ore", "Ao", "Ki", "Bu"]}, {"name": "Kyupi", "c_suf": ["dai", "koji", "ukon", "kura"], "r_suf": ["macha", "pinku", "buru", "mura"], "pref": ["Ne", "Sei", "Ku", "Ma"]}, {"name": "Maburu", "c_suf": ["shiro", "katsu", "kosho", "koji"], "r_suf": ["ouka", "mura", "ukon", "mosu"], "pref": ["Mu", "Ne", "Ore", "Sei"]}, {"name": "Majikan", "c_suf": ["koji", "marun", "dai", "gure"], "r_suf": ["buru", "maze", "mosu", "pinku"], "pref": ["Ku", "Gu", "Ki", "Ne"]}, {"name": "Majikku", "c_suf": ["kuro", "shiro", "ukon", "marun"], "r_suf": ["mura", "usu", "mido", "buru"], "pref": ["Ryo", "Ore", "Sei", "Ma"]}, {"name": "Majo", "c_suf": ["shiro", "kuro", "ukon", "katsu"], "r_suf": ["mura", "ouka", "mido", "umi"], "pref": ["Ku", "Ma", "Ryo", "Mu"]}, {"name": "Mameido", "c_suf": ["dai", "koji", "shiro", "kuro"], "r_suf": ["mura", "umi", "buru", "pinku"], "pref": ["Mu", "Ai", "Ma", "Sei"]}, {"name": "Matsuri", "c_suf": ["dai", "gure", "kuro", "katsu"], "r_suf": ["mura", "papu", "buru", "mosu"], "pref": ["Ki", "Ma", "Ryo", "Shi"]}, {"name": "Mebaeru", "c_suf": ["shiro", "ukon", "dai", "buru"], "r_suf": ["umi", "mosu", "mura", "kuro"], "pref": ["Ma", "Mu", "Sei", "Cha"]}, {"name": "Menfisu", "c_suf": ["dai", "koji", "iero", "sairo"], "r_suf": ["buru", "mura", "maze", "mido"], "pref": ["Shi", "Ku", "Ma", "Ai"]}, {"name": "Mikkusu", "c_suf": ["iero", "koji", "yuki", "kuro"], "r_suf": ["pinku", "macha", "usu", "umi"], "pref": ["Ma", "Mu", "Ore", "Aka"]}, {"name": "Minori", "c_suf": ["ouka", "kuro", "iero", "katsu"], "r_suf": ["mido", "usu", "macha", "sumi"], "pref": ["Shi", "Ki", "Gu", "Mu"]}, {"name": "Miraju", "c_suf": ["gin", "maze", "ukon", "kosho"], "r_suf": ["mura", "umi", "buru", "mosu"], "pref": ["Ma", "Shi", "Mu", "Ku"]}, {"name": "Mizufin", "c_suf": ["shiro", "kuro", "ukon", "koji"], "r_suf": ["umi", "mura", "macha", "buru"], "pref": ["Bu", "Mu", "Ai", "Ao"]}, {"name": "Modoru", "c_suf": ["ukon", "dai", "koji", "gin"], "r_suf": ["mido", "sairo", "buru", "mura"], "pref": ["Ore", "Mu", "Ao", "Aka"]}, {"name": "Momiji", "c_suf": ["katsu", "kosho", "yuki", "iero"], "r_suf": ["papu", "dai", "macha", "umi"], "pref": ["Mu", "Cho", "Gu", "Ko"]}, {"name": "Mozaiku", "c_suf": ["shiro", "gure", "usu", "mosu"], "r_suf": ["mido", "mura", "buru", "umi"], "pref": ["Ai", "Sei", "Ao", "Bu"]}, {"name": "Mukei", "c_suf": ["shiro", "kuro", "kōji", "dai"], "r_suf": ["pinku", "usu", "sumi", "macha"], "pref": ["Ma", "Bu", "Cha", "Mu"]}, {"name": "Naegi", "c_suf": ["kura", "ukon", "buru", "kuro"], "r_suf": ["mido", "umi", "maze", "mura"], "pref": ["Sei", "Shi", "Ryo", "Bu"]}, {"name": "Naisu", "c_suf": ["shiro", "ukon", "buru", "koji"], "r_suf": ["pinku", "usu", "mido", "papu"], "pref": ["Ma", "Sei", "Ao", "Ori"]}, {"name": "Natsu", "c_suf": ["dai", "shiro", "katsu", "gin"], "r_suf": ["koji", "ukon", "pinku", "umi"], "pref": ["Ma", "Ore", "Ne", "Ki"]}, {"name": "Nezumi", "c_suf": ["shiro", "kuro", "katsu", "dai"], "r_suf": ["usu", "buru", "mura", "umi"], "pref": ["Ne", "Gu", "Ma", "Aka"]}, {"name": "Nitto", "c_suf": ["shiro", "ukon", "kuro", "katsu"], "r_suf": ["mosu", "mido", "umi", "mura"], "pref": ["Ore", "Sei", "Aka", "Ki"]}, {"name": "Norudiku", "c_suf": ["kuro", "shiro", "gure", "marun"], "r_suf": ["sumi", "katsu", "mura", "mosu"], "pref": ["Ku", "Ore", "Ne", "Cho"]}, {"name": "Nousagi", "c_suf": ["gure", "sairo", "kuro", "dai"], "r_suf": ["pinku", "mura", "umi", "koji"], "pref": ["Shi", "Aka", "Cho", "Ku"]}, {"name": "Nuime", "c_suf": ["shiro", "kuro", "sairo", "mido"], "r_suf": ["macha", "mura", "mosu", "papu"], "pref": ["Ryo", "Mu", "Ku", "Aka"]}, {"name": "Nureta", "c_suf": ["shiro", "gure", "umi", "mosu"], "r_suf": ["mura", "buru", "mido", "usu"], "pref": ["Ne", "Ao", "Bu", "Ai"]}, {"name": "Nyanya", "c_suf": ["gin", "dai", "kuro", "koji"], "r_suf": ["ouka", "buru", "umi", "pinku"], "pref": ["Ku", "Shi", "Ki", "Mu"]}, {"name": "Obie", "c_suf": ["koji", "dai", "shiro", "kuro"], "r_suf": ["macha", "ouka", "buru", "usu"], "pref": ["Ryo", "Ma", "Ki", "Mu"]}, {"name": "Ochiba", "c_suf": ["shiro", "dai", "koji", "kura"], "r_suf": ["macha", "mosu", "sumi", "katsu"], "pref": ["Aka", "Ore", "Ryo", "Cho"]}, {"name": "Odokuro", "c_suf": ["shiro", "sumi", "gure", "kuro"], "r_suf": ["koji", "usu", "papu", "buru"], "pref": ["Mu", "Ao", "Ryo", "Ne"]}, {"name": "Oiwai", "c_suf": ["dai", "gure", "koji", "macha"], "r_suf": ["mido", "mura", "buru", "ouka"], "pref": ["Ki", "Ma", "Sei", "Ku"]}, {"name": "Okan", "c_suf": ["shiro", "kuro", "dai", "ukon"], "r_suf": ["gure", "katsu", "buru", "papu"], "pref": ["Ko", "Cha", "Ku", "Ma"]}, {"name": "Okasan", "c_suf": ["ukon", "dai", "koji", "mura"], "r_suf": ["ouka", "gin", "macha", "buru"], "pref": ["Mu", "Gu", "Ao", "Bu"]}, {"name": "Okuto", "c_suf": ["kura", "dai", "kuro", "sairo"], "r_suf": ["mura", "usu", "mosu", "buru"], "pref": ["Cha", "Mu", "Ne", "Ryo"]}, {"name": "Ondori", "c_suf": ["shiro", "iero", "kuro", "gure"], "r_suf": ["koji", "katsu", "buru", "mosu"], "pref": ["Aka", "Ore", "Ne", "Cho"]}, {"name": "Onmyo", "c_suf": ["kuro", "shiro", "kura", "ukon"], "r_suf": ["buru", "sairo", "usu", "mura"], "pref": ["Shi", "Ku", "Ori", "Hai"]}, {"name": "Onpa", "c_suf": ["dai", "ukon", "sairo", "shiro"], "r_suf": ["sumi", "papu", "umi", "mido"], "pref": ["Ori", "Ryo", "Ao", "Mu"]}, {"name": "Origami", "c_suf": ["dai", "sumi", "koji", "cheri"], "r_suf": ["buru", "macha", "usu", "pinku"], "pref": ["Ku", "Shi", "Ne", "Ki"]}, {"name": "Oriito", "c_suf": ["ukon", "shiro", "marun", "gure"], "r_suf": ["iero", "mosu", "buru", "mura"], "pref": ["Ku", "Ma", "Ryo", "Gu"]}, {"name": "Orora", "c_suf": ["kuro", "katsu", "sairo", "koji"], "r_suf": ["buru", "ouka", "mura", "mosu"], "pref": ["Ryo", "Ki", "Ai", "Shi"]}, {"name": "Oushi", "c_suf": ["iero", "dai", "sairo", "kosho"], "r_suf": ["koji", "maze", "mido", "mosu"], "pref": ["Gu", "Ko", "Ma", "Ryo"]}, {"name": "Paichan", "c_suf": ["dai", "ukon", "katsu", "sairo"], "r_suf": ["maze", "macha", "buru", "pinku"], "pref": ["Ore", "Gu", "Ki", "Ryo"]}, {"name": "Parifu", "c_suf": ["gin", "dai", "ukon", "kosho"], "r_suf": ["iero", "koji", "mido", "mosu"], "pref": ["Cho", "Ryo", "Ko", "Gu"]}, {"name": "Patan", "c_suf": ["dai", "gin", "marun", "ukon"], "r_suf": ["mosu", "umi", "koji", "katsu"], "pref": ["Ne", "Aka", "Ku", "Mu"]}, {"name": "Pazuru", "c_suf": ["shiro", "dai", "iero", "kura"], "r_suf": ["mura", "buru", "mosu", "cheri"], "pref": ["Shi", "Bu", "Cha", "Mu"]}, {"name": "Pengin", "c_suf": ["kuro", "dai", "kura", "koji"], "r_suf": ["ouka", "maze", "umi", "buru"], "pref": ["Shi", "Bu", "Ki", "Mu"]}, {"name": "Pittari", "c_suf": ["dai", "kura", "iero", "mosu"], "r_suf": ["umi", "buru", "mura", "maze"], "pref": ["Shi", "Bu", "Ao", "Ma"]}, {"name": "Piyo", "c_suf": ["gure", "koji", "katsu", "ukon"], "r_suf": ["umi", "ouka", "mosu", "macha"], "pref": ["Shi", "Ki", "Ao", "Ko"]}, {"name": "Piza", "c_suf": ["dai", "cheri", "ukon", "katsu"], "r_suf": ["mura", "mosu", "buru", "usu"], "pref": ["Shi", "Ore", "Ryo", "Cho"]}, {"name": "Rabu", "c_suf": ["dai", "koji", "yuki", "marun"], "r_suf": ["papu", "cheri", "maze", "umi"], "pref": ["Shi", "Ma", "Mu", "Aka"]}, {"name": "Raion", "c_suf": ["dai", "ukon", "shiro", "kuro"], "r_suf": ["usu", "katsu", "sumi", "koji"], "pref": ["Ne", "Cho", "Ori", "Ore"]}, {"name": "Rakki", "c_suf": ["shiro", "ukon", "koji", "mosu"], "r_suf": ["umi", "pinku", "mido", "macha"], "pref": ["Ma", "Ryo", "Gu", "Ai"]}, {"name": "Ramen", "c_suf": ["dai", "katsu", "ukon", "marun"], "r_suf": ["umi", "pinku", "buru", "macha"], "pref": ["Shi", "Ore", "Ma", "Mu"]}, {"name": "Ranpu", "c_suf": ["shiro", "kuro", "ukon", "marun"], "r_suf": ["umi", "macha", "mura", "pinku"], "pref": ["Ao", "Ore", "Gu", "Mu"]}, {"name": "Rasen", "c_suf": ["dai", "kuro", "yuki", "gure"], "r_suf": ["ukon", "koji", "pinku", "mido"], "pref": ["Ki", "Ao", "Ma", "Ku"]}, {"name": "Redichu", "c_suf": ["kuro", "marun", "kura", "mura"], "r_suf": ["cheri", "mosu", "mido", "buru"], "pref": ["Ryo", "Ki", "Ai", "Aka"]}, {"name": "Reini", "c_suf": ["shiro", "kura", "koji", "mura"], "r_suf": ["maze", "umi", "buru", "usu"], "pref": ["Ao", "Bu", "Cha", "Mu"]}, {"name": "Ribon", "c_suf": ["dai", "koji", "papu", "mosu"], "r_suf": ["ouka", "umi", "macha", "buru"], "pref": ["Ne", "Ma", "Mu", "Ku"]}, {"name": "Risu", "c_suf": ["kosho", "kuro", "marun", "ukon"], "r_suf": ["sumi", "shiro", "kura", "mosu"], "pref": ["Ore", "Cho", "Ma", "Gu"]}, {"name": "Robotto", "c_suf": ["shiro", "cheri", "kuro", "ukon"], "r_suf": ["umi", "marun", "buru", "kura"], "pref": ["Ku", "Ne", "Bu", "Ryo"]}, {"name": "Rokkaku", "c_suf": ["shiro", "usu", "gure", "ukon"], "r_suf": ["mosu", "kuro", "umi", "papu"], "pref": ["Sei", "Bu", "Ku", "Ai"]}, {"name": "Romansu", "c_suf": ["cheri", "shiro", "gin", "dai"], "r_suf": ["sumi", "ouka", "buru", "koji"], "pref": ["Ore", "Aka", "Ma", "Mu"]}, {"name": "Roru", "c_suf": ["yuki", "gure", "ukon", "mura"], "r_suf": ["sumi", "buru", "umi", "pinku"], "pref": ["Mu", "Ku", "Sei", "Shi"]}, {"name": "Rozu", "c_suf": ["shiro", "dai", "kuro", "katsu"], "r_suf": ["cheri", "umi", "ouka", "maze"], "pref": ["Ne", "Aka", "Ma", "Ku"]}, {"name": "Ryoshi", "c_suf": ["dai", "iero", "kuro", "cheri"], "r_suf": ["umi", "katsu", "koji", "papu"], "pref": ["Gu", "Ore", "Ku", "Mu"]}, {"name": "Ryuga", "c_suf": ["yuki", "kuro", "sairo", "katsu"], "r_suf": ["mura", "kosho", "usu", "mosu"], "pref": ["Ko", "Cho", "Ryo", "Ku"]}, {"name": "Saboten", "c_suf": ["shiro", "marun", "kuro", "gure"], "r_suf": ["mido", "mosu", "iero", "buru"], "pref": ["Ai", "Ne", "Ma", "Ryo"]}, {"name": "Safubo", "c_suf": ["kuro", "katsu", "gure", "koji"], "r_suf": ["cheri", "sairo", "umi", "macha"], "pref": ["Cha", "Ai", "Ao", "Ki"]}, {"name": "Saisho", "c_suf": ["shiro", "iero", "marun", "kuro"], "r_suf": ["pinku", "umi", "mido", "mura"], "pref": ["Ai", "Ku", "Gu", "Aka"]}, {"name": "Sakaeru", "c_suf": ["dai", "ukon", "kuro", "shiro"], "r_suf": ["koji", "usu", "buru", "ouka"], "pref": ["Ma", "Cha", "Ki", "Mu"]}, {"name": "Saku", "c_suf": ["gin", "marun", "kura", "iero"], "r_suf": ["pinku", "mura", "sumi", "buru"], "pref": ["Aka", "Mu", "Ku", "Ne"]}, {"name": "Sakyu", "c_suf": ["dai", "shiro", "kuro", "ukon"], "r_suf": ["katsu", "mido", "mosu", "koji"], "pref": ["Cho", "Ne", "Ko", "Aka"]}, {"name": "Sama", "c_suf": ["shiro", "dai", "ukon", "koji"], "r_suf": ["umi", "mosu", "maze", "mura"], "pref": ["Ko", "Cho", "Sei", "Mu"]}, {"name": "Sanba", "c_suf": ["dai", "koji", "ukon", "gin"], "r_suf": ["umi", "mido", "mura", "buru"], "pref": ["Ryo", "Sei", "Ore", "Mu"]}, {"name": "Sande", "c_suf": ["kuro", "shiro", "ukon", "dai"], "r_suf": ["katsu", "cheri", "umi", "mura"], "pref": ["Ne", "Ki", "Ma", "Cho"]}, {"name": "Sanfaia", "c_suf": ["dai", "iero", "shiro", "sairo"], "r_suf": ["maze", "usu", "gure", "papu"], "pref": ["Cha", "Ore", "Ki", "Cho"]}, {"name": "Sankaku", "c_suf": ["dai", "iero", "ukon", "katsu"], "r_suf": ["mido", "koji", "sumi", "buru"], "pref": ["Bu", "Ryo", "Cho", "Gu"]}, {"name": "Sarada", "c_suf": ["shiro", "kuro", "dai", "koji"], "r_suf": ["macha", "mosu", "mura", "umi"], "pref": ["Ore", "Ryo", "Cha", "Cho"]}, {"name": "Saru", "c_suf": ["shiro", "kuro", "ukon", "kosho"], "r_suf": ["sairo", "koji", "mosu", "katsu"], "pref": ["Ki", "Aka", "Cho", "Ryo"]}, {"name": "Sasori", "c_suf": ["dai", "gin", "kuro", "sairo"], "r_suf": ["buru", "mido", "mosu", "koji"], "pref": ["Ku", "Aka", "Sei", "Gu"]}, {"name": "Sebun", "c_suf": ["shiro", "dai", "iero", "buru"], "r_suf": ["pinku", "usu", "umi", "mura"], "pref": ["Ma", "Ki", "Bu", "Ku"]}, {"name": "Seikyo", "c_suf": ["shiro", "dai", "koji", "ukon"], "r_suf": ["sumi", "mosu", "pinku", "umi"], "pref": ["Aka", "Ki", "Ma", "Bu"]}, {"name": "Seiryo", "c_suf": ["dai", "koji", "buru", "sairo"], "r_suf": ["maze", "mosu", "sumi", "mido"], "pref": ["Ki", "Shi", "Ku", "Mu"]}, {"name": "Seiryu", "c_suf": ["dai", "katsu", "sairo", "kosho"], "r_suf": ["papu", "marun", "mura", "mosu"], "pref": ["Ai", "Ki", "Ore", "Ne"]}, {"name": "Seiza", "c_suf": ["shiro", "ukon", "gure", "koji"], "r_suf": ["sumi", "maze", "usu", "mura"], "pref": ["Ki", "Ku", "Bu", "Ryo"]}, {"name": "Senpu", "c_suf": ["shiro", "gin", "kuro", "iero"], "r_suf": ["dai", "papu", "sairo", "umi"], "pref": ["Ryo", "Ao", "Mu", "Ma"]}, {"name": "Sensu", "c_suf": ["dai", "koji", "kuro", "umi"], "r_suf": ["papu", "mido", "buru", "cheri"], "pref": ["Shi", "Ku", "Ma", "Ai"]}, {"name": "Seta", "c_suf": ["dai", "ukon", "ori", "marun"], "r_suf": ["mido", "usu", "mura", "pinku"], "pref": ["Ori", "Ryo", "Aka", "Ki"]}, {"name": "Shaki", "c_suf": ["shiro", "gure", "katsu", "kosho"], "r_suf": ["umi", "buru", "mosu", "usu"], "pref": ["Ku", "Sei", "Shi", "Ne"]}, {"name": "Shamuro", "c_suf": ["koji", "mosu", "kura", "ouka"], "r_suf": ["sumi", "macha", "usu", "mido"], "pref": ["Ne", "Ki", "Ryo", "Mu"]}, {"name": "Shibaru", "c_suf": ["buru", "pinku", "shiro", "ukon"], "r_suf": ["usu", "sumi", "mura", "maze"], "pref": ["Mu", "Ore", "Ryo", "Ki"]}, {"name": "Shika", "c_suf": ["kuro", "katsu", "dai", "sairo"], "r_suf": ["papu", "mosu", "kura", "maze"], "pref": ["Gu", "Ore", "Ne", "Ko"]}, {"name": "Shikaku", "c_suf": ["marun", "koji", "usu", "gure"], "r_suf": ["mosu", "papu", "buru", "cheri"], "pref": ["Ki", "Mu", "Gu", "Bu"]}, {"name": "Shimi", "c_suf": ["kuro", "shiro", "katsu", "kura"], "r_suf": ["dai", "koji", "kosho", "sairo"], "pref": ["Ne", "Ore", "Cho", "Mu"]}, {"name": "Shisa", "c_suf": ["shiro", "dai", "kura", "kuro"], "r_suf": ["mosu", "mura", "buru", "koji"], "pref": ["Ne", "Ki", "Ma", "Ku"]}, {"name": "Shishi", "c_suf": ["dai", "shiro", "sairo", "kosho"], "r_suf": ["katsu", "ukon", "koji", "iero"], "pref": ["Ori", "Shi", "Ma", "Cho"]}, {"name": "Shizen", "c_suf": ["shiro", "pinku", "koji", "sairo"], "r_suf": ["macha", "mido", "mosu", "umi"], "pref": ["Ryo", "Sei", "Cho", "Gu"]}, {"name": "Shojo", "c_suf": ["gure", "kura", "kosho", "katsu"], "r_suf": ["buru", "umi", "mosu", "usu"], "pref": ["Shi", "Mu", "Ma", "Ko"]}, {"name": "Shokku", "c_suf": ["yuki", "ukon", "kuro", "koji"], "r_suf": ["umi", "maze", "buru", "mido"], "pref": ["Shi", "Ryo", "Ki", "Cho"]}, {"name": "Shoku", "c_suf": ["kuro", "mosu", "marun", "koji"], "r_suf": ["ami", "papu", "buru", "usu"], "pref": ["Ki", "Ryo", "Shi", "Ma"]}, {"name": "Showa", "c_suf": ["dai", "koji", "sairo", "mosu"], "r_suf": ["papu", "mura", "buru", "umi"], "pref": ["Shi", "Ku", "Ko", "Ki"]}, {"name": "Shukaku", "c_suf": ["ukon", "gin", "sairo", "kosho"], "r_suf": ["mido", "mosu", "macha", "koji"], "pref": ["Ne", "Cho", "Aka", "Ku"]}, {"name": "Sodai", "c_suf": ["ukon", "cheri", "pinku", "koji"], "r_suf": ["usu", "buru", "mura", "mido"], "pref": ["Ma", "Ore", "Ku", "Sei"]}, {"name": "Sori", "c_suf": ["dai", "katsu", "gure", "kuro"], "r_suf": ["papu", "kura", "mosu", "ouka"], "pref": ["Ai", "Ki", "Ma", "Shi"]}, {"name": "Soru", "c_suf": ["gin", "gure", "iero", "sairo"], "r_suf": ["usu", "mura", "umi", "kuro"], "pref": ["Ne", "Ao", "Sei", "Ko"]}, {"name": "Suisho", "c_suf": ["dai", "shiro", "kuro", "ukon"], "r_suf": ["mura", "mido", "buru", "umi"], "pref": ["Ma", "Mu", "Ore", "Ao"]}, {"name": "Sukeru", "c_suf": ["yuki", "iero", "kura", "sairo"], "r_suf": ["buru", "umi", "ouka", "papu"], "pref": ["Sei", "Ma", "Mu", "Ao"]}, {"name": "Sumairi", "c_suf": ["shiro", "dai", "koji", "ukon"], "r_suf": ["mido", "ouka", "usu", "sumi"], "pref": ["Ku", "Ao", "Ore", "Mu"]}, {"name": "Suna", "c_suf": ["shiro", "iero", "dai", "katsu"], "r_suf": ["buru", "kosho", "sairo", "gure"], "pref": ["Ne", "Ku", "Ko", "Cho"]}, {"name": "Suneku", "c_suf": ["shiro", "dai", "gure", "ukon"], "r_suf": ["mosu", "mido", "sumi", "marun"], "pref": ["Ryo", "Mu", "Ne", "Ku"]}, {"name": "Suno", "c_suf": ["shiro", "usu", "umi", "ouka"], "r_suf": ["kura", "mido", "buru", "mura"], "pref": ["Shi", "Bu", "Ryo", "Ao"]}, {"name": "Sunoguro", "c_suf": ["dai", "marun", "gure", "koji"], "r_suf": ["buru", "kuro", "mura", "macha"], "pref": ["Ai", "Shi", "Mu", "Ki"]}, {"name": "Supaiku", "c_suf": ["kuro", "dai", "katsu", "shiro"], "r_suf": ["mura", "maze", "buru", "macha"], "pref": ["Ki", "Ai", "Ryo", "Ma"]}, {"name": "Supido", "c_suf": ["gin", "kuro", "dai", "koji"], "r_suf": ["pinku", "mura", "mido", "buru"], "pref": ["Shi", "Ne", "Ki", "Aka"]}, {"name": "Suro", "c_suf": ["shiro", "kuro", "katsu", "dai"], "r_suf": ["cheri", "macha", "iero", "koji"], "pref": ["Ne", "Ko", "Cho", "Cha"]}, {"name": "Sushi", "c_suf": ["dai", "koji", "usu", "sumi"], "r_suf": ["pinku", "mura", "mosu", "gure"], "pref": ["Shi", "Ki", "Ku", "Gu"]}, {"name": "Sutabas", "c_suf": ["katsu", "kuro", "koji", "sumi"], "r_suf": ["mura", "buru", "cheri", "macha"], "pref": ["Ao", "Ki", "Aka", "Shi"]}, {"name": "Sutaggu", "c_suf": ["shiro", "ukon", "sairo", "katsu"], "r_suf": ["mido", "minto", "mosu", "dai"], "pref": ["Cha", "Ryo", "Ao", "Ori"]}, {"name": "Sutarai", "c_suf": ["shiro", "gure", "iero", "katsu"], "r_suf": ["ouka", "usu", "mura", "kuro"], "pref": ["Ao", "Ki", "Ku", "Ne"]}, {"name": "Sutata", "c_suf": ["dai", "ukon", "kuro", "shiro"], "r_suf": ["koji", "mido", "buru", "pinku"], "pref": ["Aka", "Ao", "Ryo", "Ki"]}, {"name": "Sutazzu", "c_suf": ["shiro", "kura", "mido", "katsu"], "r_suf": ["usu", "marun", "macha", "kosho"], "pref": ["Ne", "Ku", "Bu", "Mu"]}, {"name": "Suteki", "c_suf": ["shiro", "marun", "sairo", "dai"], "r_suf": ["ouka", "macha", "sumi", "mura"], "pref": ["Ma", "Ne", "Aka", "Mu"]}, {"name": "Sutsu", "c_suf": ["shiro", "dai", "kuro", "koji"], "r_suf": ["ouka", "usu", "mido", "buru"], "pref": ["Ne", "Mu", "Aka", "Ki"]}, {"name": "Taia", "c_suf": ["kuro", "sairo", "kosho", "shiro"], "r_suf": ["sumi", "buru", "usu", "mosu"], "pref": ["Shi", "Ku", "Ao", "Bu"]}, {"name": "Taiga", "c_suf": ["shiro", "kuro", "katsu", "ukon"], "r_suf": ["macha", "dai", "buru", "usu"], "pref": ["Ore", "Ne", "Ko", "Cho"]}, {"name": "Taiju", "c_suf": ["shiro", "ukon", "katsu", "sairo"], "r_suf": ["mido", "macha", "usu", "koji"], "pref": ["Ao", "Cho", "Ko", "Ryo"]}, {"name": "Tako", "c_suf": ["shiro", "dai", "iero", "kuro"], "r_suf": ["buru", "papu", "usu", "mido"], "pref": ["Ma", "Ore", "Ko", "Sei"]}, {"name": "Tamago", "c_suf": ["shiro", "ukon", "kura", "koji"], "r_suf": ["mura", "buru", "maze", "macha"], "pref": ["Ma", "Bu", "Ryo", "Ore"]}, {"name": "Tamaya", "c_suf": ["kuro", "mosu", "marun", "buru"], "r_suf": ["umi", "papu", "mura", "maze"], "pref": ["Ki", "Ryo", "Shi", "Ma"]}, {"name": "Tanoshi", "c_suf": ["dai", "ukon", "katsu", "sairo"], "r_suf": ["macha", "papu", "pinku", "marun"], "pref": ["Shi", "Ku", "Ryo", "Ao"]}, {"name": "Tanuki", "c_suf": ["dai", "koji", "kuro", "usu"], "r_suf": ["mura", "umi", "mido", "ouka"], "pref": ["Shi", "Ma", "Ore", "Mu"]}, {"name": "Tashido", "c_suf": ["shiro", "kuro", "gure", "sairo"], "r_suf": ["ukon", "pinku", "usu", "mura"], "pref": ["Ku", "Ne", "Bu", "Cho"]}, {"name": "Tetsuya", "c_suf": ["shiro", "sairo", "kuro", "marun"], "r_suf": ["buru", "sumi", "ukon", "usu"], "pref": ["Ku", "Ore", "Ma", "Ne"]}, {"name": "Toboe", "c_suf": ["buru", "ukon", "shiro", "marun"], "r_suf": ["macha", "umi", "ouka", "koji"], "pref": ["Sei", "Ki", "Mu", "Bu"]}, {"name": "Togatta", "c_suf": ["dai", "ukon", "koji", "cheri"], "r_suf": ["mosu", "usu", "macha", "kosho"], "pref": ["Ma", "Ore", "Ryo", "Cho"]}, {"name": "Toge", "c_suf": ["yuki", "kuro", "ukon", "katsu"], "r_suf": ["usu", "mido", "mura", "umi"], "pref": ["Ai", "Ryo", "Ku", "Gu"]}, {"name": "Togewei", "c_suf": ["marun", "ami", "sairo", "dai"], "r_suf": ["maze", "buru", "mido", "mura"], "pref": ["Cha", "Ore", "Mu", "Gu"]}, {"name": "Togo", "c_suf": ["gin", "iero", "cheri", "kuro"], "r_suf": ["buru", "mura", "mido", "umi"], "pref": ["Shi", "Ku", "Bu", "Mu"]}, {"name": "Toransu", "c_suf": ["shiro", "gure", "koji", "dai"], "r_suf": ["mido", "mura", "pinku", "buru"], "pref": ["Ne", "Mu", "Sei", "Ku"]}, {"name": "Torippi", "c_suf": ["dai", "koji", "buru", "iero"], "r_suf": ["mura", "papu", "umi", "macha"], "pref": ["Ku", "Mu", "Cha", "Ryo"]}, {"name": "Toryo", "c_suf": ["dai", "iero", "kura", "kosho"], "r_suf": ["usu", "mura", "mosu", "umi"], "pref": ["Shi", "Ko", "Cha", "Cho"]}, {"name": "Totemu", "c_suf": ["dai", "kura", "sairo", "gure"], "r_suf": ["ukon", "macha", "buru", "ouka"], "pref": ["Cho", "Ku", "Ore", "Ne"]}, {"name": "Tsuin", "c_suf": ["yuki", "iero", "kura", "katsu"], "r_suf": ["ouka", "usu", "buru", "maze"], "pref": ["Ne", "Ma", "Cha", "Sei"]}, {"name": "Tsukino", "c_suf": ["dai", "ukon", "shiro", "kuro"], "r_suf": ["sumi", "mosu", "pinku", "usu"], "pref": ["Ore", "Sei", "Ma", "Bu"]}, {"name": "Tsurai", "c_suf": ["dai", "sairo", "marun", "katsu"], "r_suf": ["koji", "mido", "mura", "ouka"], "pref": ["Ki", "Bu", "Cho", "Ne"]}, {"name": "Tsuru", "c_suf": ["koji", "ukon", "katsu", "mosu"], "r_suf": ["shiro", "mido", "macha", "buru"], "pref": ["Sei", "Ryo", "Gu", "Ku"]}, {"name": "Ukiwa", "c_suf": ["shiro", "ouka", "iero", "kuro"], "r_suf": ["mura", "buru", "mido", "sumi"], "pref": ["Ki", "Mu", "Ao", "Ore"]}, {"name": "Umibe", "c_suf": ["shiro", "koji", "iero", "kura"], "r_suf": ["umi", "buru", "usu", "pinku"], "pref": ["Cha", "Sei", "Ai", "Ao"]}, {"name": "Uoza", "c_suf": ["shiro", "gure", "kuro", "sumi"], "r_suf": ["usu", "buru", "mosu", "mura"], "pref": ["Ne", "Mu", "Ai", "Ryo"]}, {"name": "Usagi", "c_suf": ["gin", "koji", "dai", "gure"], "r_suf": ["usu", "cheri", "macha", "sairo"], "pref": ["Shi", "Cho", "Sei", "Ku"]}, {"name": "Ushika", "c_suf": ["gin", "kuro", "dai", "iero"], "r_suf": ["katsu", "sairo", "kura", "koji"], "pref": ["Shi", "Cho", "Ku", "Cha"]}, {"name": "Wagasa", "c_suf": ["pinku", "buru", "iero", "shiro"], "r_suf": ["mido", "mura", "umi", "macha"], "pref": ["Ma", "Ku", "Mu", "Aka"]}, {"name": "Wakai", "c_suf": ["shiro", "ukon", "mura", "gure"], "r_suf": ["sumi", "ouka", "usu", "papu"], "pref": ["Ma", "Ki", "Ryo", "Cha"]}, {"name": "Wanwan", "c_suf": ["pinku", "shiro", "kuro", "cheri"], "r_suf": ["gure", "ukon", "buru", "sairo"], "pref": ["Ku", "Ma", "Cha", "Shi"]}, {"name": "Yagi", "c_suf": ["shiro", "gin", "sairo", "katsu"], "r_suf": ["papu", "mido", "umi", "mura"], "pref": ["Ne", "Mu", "Cho", "Ryo"]}, {"name": "Yanone", "c_suf": ["gin", "gure", "kuro", "kosho"], "r_suf": ["macha", "maze", "ukon", "cheri"], "pref": ["Ne", "Ku", "Ko", "Sei"]}, {"name": "Yasumi", "c_suf": ["dai", "shiro", "iero", "katsu"], "r_suf": ["ouka", "usu", "mura", "umi"], "pref": ["Ore", "Bu", "Ku", "Ko"]}, {"name": "Yochi", "c_suf": ["buru", "dai", "kuro", "kura"], "r_suf": ["papu", "mosu", "marun", "ouka"], "pref": ["Mu", "Ki", "Shi", "Ao"]}, {"name": "Yoruumi", "c_suf": ["dai", "buru", "sairo", "koji"], "r_suf": ["maze", "mido", "papu", "mura"], "pref": ["Ku", "Ai", "Ki", "Ryo"]}, {"name": "Yosei", "c_suf": ["kuro", "shiro", "koji", "mosu"], "r_suf": ["buru", "ouka", "sumi", "mido"], "pref": ["Ai", "Ki", "Ma", "Mu"]}, {"name": "Yufo", "c_suf": ["kuro", "dai", "mura", "gure"], "r_suf": ["ouka", "pinku", "mosu", "usu"], "pref": ["Shi", "Sei", "Ki", "Ryo"]}, {"name": "Yumi", "c_suf": ["gin", "mura", "katsu", "ukon"], "r_suf": ["mido", "sumi", "buru", "macha"], "pref": ["Mu", "Gu", "Cho", "Ore"]}];
+
+    const LS_PROGRESS = 'zk2_user_progress', LS_PATTERNS = 'zk2_patterns', LS_SETTINGS = 'zk2_settings';
+    const DEFAULT_SHEETS = ['A-M: Collectors', 'N-Z: Collectors'];
+    const HARDCODED_PATTERN_URL = "https://docs.google.com/spreadsheets/d/1akuOUpPjwNLIFaTO7IxMNiGyv8hApBzzSYnB2V8BgxQ/edit?gid=0#gid=0"
+
+    // <parser>
+    function cellStr(v) { return String(v == null ? '' : v).trim(); }
+
+    function parseGrid(rows, validNamesSet) {
+      const out = [];
+      for (let r = 0; r < rows.length; r++) {
+        const row = rows[r] || [];
+
+        const rowText = row.map(cellStr).join(' ').toLowerCase();
+        if (rowText.includes('koi names') || rowText.includes('waiting in inbox')) {
+          continue;
+        }
+
+        for (let c = 0; c < row.length; c++) {
+          const name = cellStr(row[c]);
+
+          if (!name) continue;
+
+          if (/koi\s*names/i.test(name) || name.includes(':')) continue;
+
+          if (validNamesSet && validNamesSet.size > 0) {
+            const matchFound = Array.from(validNamesSet).some(vn => vn.trim().toLowerCase() === name.trim().toLowerCase());
+            if (!matchFound) continue;
+          } else {
+            if (/^\d+$/.test(name) || /^(koi|dragons?|common|rare|-|waiting)/i.test(name) || name.length < 2) continue;
+          }
+
+          let headRowIdx = -1;
+          let cStartCol = -1;
+          for (let scanR = r; scanR <= r + 2 && scanR < rows.length; scanR++) {
+            const sRow = rows[scanR] || [];
+            for (let col = 0; col < sRow.length; col++) {
+              const val = cellStr(sRow[col]);
+              if (val.startsWith('-')) {
+                headRowIdx = scanR;
+                cStartCol = col;
+                break;
+              }
+            }
+            if (headRowIdx !== -1) break;
+          }
+
+          if (headRowIdx === -1 || cStartCol === -1) continue;
+
+          const head = rows[headRowIdx] || [];
+
+          const cCols = [];
+          for (let k = cStartCol; k < cStartCol + 4 && k < head.length; k++) {
+            const h = cellStr(head[k]);
+            if (h !== '' && !h.toLowerCase().includes('dragon')) {
+              cCols.push(k);
+            }
+          }
+
+          let rareStart = -1;
+          for (let k = cStartCol + 4; k < head.length; k++) {
+            const h = cellStr(head[k]);
+            if (h.startsWith('-')) {
+              rareStart = k;
+              break;
+            }
+          }
+          if (rareStart === -1) rareStart = cStartCol + 5;
+
+          const rCols = [];
+          for (let k = rareStart; k < rareStart + 4 && k < head.length; k++) {
+            const h = cellStr(head[k]);
+            if (h !== '' && !h.toLowerCase().includes('dragon') && h.toLowerCase() !== 'koi') {
+              rCols.push(k);
+            }
+          }
+
+          if (!cCols.length) continue;
+
+          const pref = [], rowIdx = [];
+          for (let i = headRowIdx + 1; i < rows.length && pref.length < 10; i++) {
+            const pRow = rows[i] || [];
+            let label = '';
+            for (let pc = 0; pc <= c + 1; pc++) {
+              const val = cellStr(pRow[pc]);
+              if (val.endsWith('-')) {
+                label = val;
+                break;
+              }
+            }
+
+            if (label && label.endsWith('-')) {
+              pref.push(label.replace(/-$/, '').trim());
+              rowIdx.push(i);
+            } else {
+              break;
+            }
+          }
+
+          if (!pref.length) continue;
+
+          const cells = {};
+          const readGrid = (cols, t) => rowIdx.forEach((ri, i) => cols.forEach((col, j) => {
+            const v = cellStr((rows[ri] || [])[col]).toLowerCase();
+            if (v === 'k' || v === 'd') cells[`${t}_${i}_${j}`] = v;
+          }));
+          readGrid(cCols, 'c');
+          readGrid(rCols, 'r');
+
+          if (!out.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+            out.push({
+              name, type: 'collector', pref,
+              c_suf: cCols.map(k => cellStr(head[k]).replace(/^-/, '').trim()),
+              r_suf: rCols.map(k => cellStr(head[k]).replace(/^-/, '').trim()),
+              cells
+            });
+          }
+        }
+      }
+      return out;
+    }
+
+    function parseProgressivesGrid(rows) {
+      const out = [];
+      const startCols = [8, 19, 30]; // Kolommen I, T, AE (3 kolommen van patronen naast elkaar)
+
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r] || [];
+
+        startCols.forEach(startCol => {
+          for (let c = startCol; c < startCol + 3 && c < row.length; c++) {
+            const name = cellStr(row[c]);
+            if (!name || name.length < 2 || /^\d+$/.test(name) || /^(koi|dragon|common|rare|-)/i.test(name)) continue;
+
+            let headRowIdx = -1;
+            let cStartCol = -1;
+            for (let scanR = r; scanR <= r + 2 && scanR < rows.length; scanR++) {
+              const sRow = rows[scanR] || [];
+              for (let col = c - 1; col <= c + 3 && col < sRow.length; col++) {
+                const val = cellStr(sRow[col]);
+                if (val.startsWith('-')) {
+                  headRowIdx = scanR;
+                  cStartCol = col;
+                  break;
+                }
+              }
+              if (headRowIdx !== -1) break;
+            }
+
+            if (headRowIdx === -1 || cStartCol === -1) continue;
+
+            const head = rows[headRowIdx] || [];
+
+            const cCols = [];
+            for (let k = cStartCol; k < cStartCol + 4 && k < head.length; k++) {
+              const h = cellStr(head[k]);
+              if (h !== '' && !h.toLowerCase().includes('dragon')) {
+                cCols.push(k);
+              }
+            }
+
+            let rareStart = -1;
+            for (let k = cStartCol + 4; k < head.length; k++) {
+              const h = cellStr(head[k]);
+              if (h.startsWith('-')) {
+                rareStart = k;
+                break;
+              }
+            }
+            if (rareStart === -1) rareStart = cStartCol + 5;
+
+            const rCols = [];
+            for (let k = rareStart; k < rareStart + 4 && k < head.length; k++) {
+              const h = cellStr(head[k]);
+              if (h !== '' && !h.toLowerCase().includes('dragon') && h.toLowerCase() !== 'koi') {
+                rCols.push(k);
+              }
+            }
+
+            if (!cCols.length) continue;
+
+            const pref = [], rowIdx = [];
+            for (let i = headRowIdx + 1; i < rows.length && pref.length < 10; i++) {
+              const pRow = rows[i] || [];
+              let label = '';
+              for (let pc = 0; pc <= cStartCol + 1; pc++) {
+                const val = cellStr(pRow[pc]);
+                if (val.endsWith('-')) {
+                  label = val;
+                  break;
+                }
+              }
+
+              if (label && label.endsWith('-')) {
+                pref.push(label.replace(/-$/, '').trim());
+                rowIdx.push(i);
+              } else {
+                break;
+              }
+            }
+
+            if (!pref.length) continue;
+
+            const cells = {};
+            const readGrid = (cols, t) => rowIdx.forEach((ri, i) => cols.forEach((col, j) => {
+              const v = cellStr((rows[ri] || [])[col]).toLowerCase();
+              if (v === 'k' || v === 'd') cells[`${t}_${i}_${j}`] = v;
+            }));
+            readGrid(cCols, 'c');
+            readGrid(rCols, 'r');
+
+            if (!out.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+              out.push({
+                name,
+                type: 'progressive',
+                pref,
+                c_suf: cCols.map(k => cellStr(head[k]).replace(/^-/, '').trim()),
+                r_suf: rCols.map(k => cellStr(head[k]).replace(/^-/, '').trim()),
+                cells
+              });
+            }
+          }
+        });
+      }
+      return out;
+    }
+    // </parser>
+
+    let userProgress = {}, customPatterns = {}, settings = {}, patterns = [];
+    let currentFilter = 'all', activePattern = null;
+
+    function loadJSON(key, fallback) {
+      try { const v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function rebuildPatterns() {
+      const map = {};
+      rawPatternsData.forEach(p => map[p.name] = p);
+      Object.values(customPatterns).forEach(p => map[p.name] = p);
+      patterns = Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
+    }
+    function saveUserProgress() { localStorage.setItem(LS_PROGRESS, JSON.stringify(userProgress)); updateGlobalStats(); }
+    function saveCustomPatterns() { localStorage.setItem(LS_PATTERNS, JSON.stringify(customPatterns)); rebuildPatterns(); }
+    function saveSettings() { localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }
+
+    function slotsOf(p) { return p.pref.length * (p.c_suf.length + p.r_suf.length); }
+    function countOf(p) {
+      let n = 0;
+      for (let r = 0; r < p.pref.length; r++) {
+        for (let c = 0; c < p.c_suf.length; c++) if (userProgress[`${p.name}_c_${r}_${c}`]) n++;
+        for (let c = 0; c < p.r_suf.length; c++) if (userProgress[`${p.name}_r_${r}_${c}`]) n++;
+      }
+      return n;
+    }
+
+    function setFilter(filter, btn) {
+      currentFilter = filter;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderPatterns();
+    }
+
+    function dragonCountOf(p) {
+      let d = 0;
+      for (let r = 0; r < p.pref.length; r++) {
+        for (let c = 0; c < p.c_suf.length; c++) if (userProgress[`${p.name}_c_${r}_${c}`] === 'd') d++;
+        for (let c = 0; c < p.r_suf.length; c++) if (userProgress[`${p.name}_r_${r}_${c}`] === 'd') d++;
+      }
+      return d;
+    }
+
+    function renderPatterns() {
+      const container = document.getElementById('pattern-container');
+      const search = document.getElementById('search-input').value.toLowerCase();
+      container.innerHTML = '';
+
+      patterns.forEach(p => {
+        if (!p.name.toLowerCase().includes(search)) return;
+
+        const got = countOf(p);
+        const dragons = dragonCountOf(p);
+        const total = slotsOf(p);
+
+        // --- FILTER LOGICA ---
+        if (currentFilter === 'collectors' && p.type === 'progressive') return;
+        if (currentFilter === 'progressives' && p.type !== 'progressive') return;
+        if (currentFilter === 'todo' && got >= total) return;
+        if (currentFilter === 'done' && got < total) return;
+
+        const pct = total > 0 ? Math.round((got / total) * 100) : 0;
+
+        // --- DYNAMISCHE BADGE & KLEUR ---
+        let badgeClass = 'badge-todo';
+        if (pct === 100) {
+          // Voltooid: paars als alle dragons klaar zijn, anders oranje voor koi
+          badgeClass = (dragons === total) ? 'badge-dragon' : 'badge-koi';
+        } else if (pct === 0) {
+          badgeClass = 'badge-zero';
+        } else {
+          badgeClass = 'badge-progress';
+        }
+
+        const badgeHtml = total > 0 ? `<span class="badge ${badgeClass}">${pct}%</span>` : '';
+
+        const card = document.createElement('div');
+        card.className = 'pattern-card';
+        card.onclick = () => openPatternDetail(p);
+        card.innerHTML = `
+          <div class="pattern-title"><span>${p.name}</span>${badgeHtml}</div>
+          <div class="pattern-stats"><span>Voortgang: ${got} / ${total}</span></div>`;
+        container.appendChild(card);
+      });
+
+      updateGlobalStats();
+    }
+
+    function openPatternDetail(p) {
+      activePattern = p;
+      document.getElementById('modal-pattern-title').innerHTML = `
+        <span>${p.name}</span>
+        <button onclick="deletePattern('${p.name.replace(/'/g, "\\'")}')" style="border:none; border-radius:4px; padding:4px 8px; font-size:0.75rem; margin-left:10px; cursor:pointer; justify-content: center">🗑️</button>
+        <button onclick="downloadPatternImage()" style="border:none; border-radius:4px; padding:4px 8px; font-size:0.75rem; margin-left:10px; cursor:pointer; justify-content: center">⬇️</button>
+      `;
+      renderGrid('common-grid', p, 'c');
+      renderGrid('rare-grid', p, 'r');
+      document.getElementById('detail-modal').style.display = 'block';
+    }
+
+    function deletePattern(name) {
+      if (confirm(`Weet je zeker dat je het patroon "${name}" wilt verwijderen?`)) {
+        delete customPatterns[name];
+        // Verwijder eventuele opgeslagen voortgang van dit patroon
+        Object.keys(userProgress).forEach(k => {
+          if (k.startsWith(name + '_')) delete userProgress[k];
+        });
+        saveCustomPatterns();
+        saveUserProgress();
+        closeModal();
+        renderPatterns();
+      }
+    }
+
+    function downloadPatternImage() {
+      const element = document.getElementById('modal-export-content');
+
+      // Tijdelijk de sluitknop en downloadknop verbergen op de export-afbeelding
+      const closeBtn = element.querySelector('.close-btn');
+      const downloadBtn = element.querySelector('.btn-primary');
+      if (closeBtn) closeBtn.style.display = 'none';
+      if (downloadBtn) downloadBtn.style.display = 'none';
+
+      html2canvas(element, {
+        backgroundColor: '#161b22',
+        scale: 2 // Zorgt voor een mooie scherpe resolutie
+      }).then(canvas => {
+        // Knoppen weer terugzetten
+        if (closeBtn) closeBtn.style.display = 'block';
+        if (downloadBtn) downloadBtn.style.display = 'block';
+
+        // Maak een download link en klik erop
+        const link = document.createElement('a');
+        link.download = `ZK2_${activePattern ? activePattern.name : 'patroon'}_voortgang.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      }).catch(err => {
+        if (closeBtn) closeBtn.style.display = 'block';
+        if (downloadBtn) downloadBtn.style.display = 'block';
+        alert('Kon geen afbeelding maken: ' + err.message);
+      });
+    }
+
+    function renderGrid(containerId, p, type) {
+      const gridEl = document.getElementById(containerId);
+      const suffixes = type === 'c' ? p.c_suf : p.r_suf;
+      gridEl.innerHTML = '';
+      gridEl.style.gridTemplateColumns = `repeat(${suffixes.length || 4}, 1fr)`;
+      for (let r = 0; r < p.pref.length; r++) {
+        for (let c = 0; c < suffixes.length; c++) {
+          const key = `${p.name}_${type}_${r}_${c}`;
+          const val = userProgress[key] || '';
+          const cell = document.createElement('div');
+          cell.className = `grid-cell ${val === 'k' ? 'koi' : val === 'd' ? 'dragon' : ''}`;
+          cell.innerHTML = `
+            <div style="font-weight:600; font-size:0.6rem; word-break:break-word;">${p.pref[r]}${suffixes[c]} ${p.name}</div>
+            <div style="font-size:0.75rem; margin-top:2px;">${val === 'k' ? 'Koi' : val === 'd' ? 'Dragon' : ''}</div>`;
+          cell.onclick = () => toggleCellStatus(key, cell);
+          gridEl.appendChild(cell);
+        }
+      }
+    }
+
+    function toggleCellStatus(key, cellEl) {
+      const cur = userProgress[key] || '';
+      const next = cur === '' ? 'k' : cur === 'k' ? 'd' : '';
+      if (next) userProgress[key] = next; else delete userProgress[key];
+      saveUserProgress();
+      cellEl.className = `grid-cell ${next === 'k' ? 'koi' : next === 'd' ? 'dragon' : ''}`;
+      cellEl.querySelector('div:nth-child(2)').innerText = next === 'k' ? 'Koi' : next === 'd' ? 'Dragon' : '';
+      renderPatterns();
+    }
+
+    function updateGlobalStats() {
+      let koi = 0, dragon = 0, maxKoi = 0;
+      patterns.forEach(p => maxKoi += p.pref.length * (p.c_suf.length + p.r_suf.length));
+      Object.values(userProgress).forEach(v => { if (v === 'k' || v === 'd') koi++; if (v === 'd') dragon++; });
+      const max = Math.max(maxKoi, 1);
+      document.getElementById('total-percent').innerText = `${Math.round(((koi + dragon) / (max * 2)) * 100)}%`;
+      document.getElementById('stats-koi').innerText = `Koi: ${koi} / ${max}`;
+      document.getElementById('stats-dragon').innerText = `Dragons: ${dragon} / ${max}`;
+      document.getElementById('bar-koi').style.width = `${(koi / (max * 2)) * 100}%`;
+      document.getElementById('bar-dragon').style.width = `${(dragon / (max * 2)) * 100}%`;
+    }
+
+    function applyParsed(parsed, overwrite, ignoreProgress) {
+      const known = new Set(patterns.map(p => p.name));
+      const sheetNames = new Set(parsed.map(p => p.name));
+      const newNames = [];
+      let changed = 0, koi = 0, dragon = 0;
+      parsed.forEach(p => {
+        if (!known.has(p.name)) newNames.push(p.name);
+        customPatterns[p.name] = { name: p.name, type: p.type || 'collector', c_suf: p.c_suf, r_suf: p.r_suf, pref: p.pref };
+        
+        if (!ignoreProgress) {
+          [['c', p.c_suf.length], ['r', p.r_suf.length]].forEach(([t, w]) => {
+            for (let r = 0; r < p.pref.length; r++) for (let c = 0; c < w; c++) {
+              const k = `${t}_${r}_${c}`, key = `${p.name}_${k}`;
+              const v = p.cells[k] || '', old = userProgress[key] || '';
+              if (v === 'k') koi++; if (v === 'd') dragon++;
+              if (overwrite) { if (v !== old) { changed++; if (v) userProgress[key] = v; else delete userProgress[key]; } }
+              else if (v && !old) { changed++; userProgress[key] = v; }
+            }
+          });
+        }
+      });
+      saveCustomPatterns();
+      if (!ignoreProgress) saveUserProgress();
+      renderPatterns();
+      return { patterns: sheetNames.size, newNames, changed, koi, dragon };
+    }
+
+    function showStatus(msg, kind) {
+      const el = document.getElementById('sync-status');
+      el.className = 'status ' + (kind || '');
+      el.innerHTML = msg;
+    }
+    function summaryHtml(res, source, isPatternOnly) {
+      const nieuw = res.newNames.length
+        ? `<br>🆕 ${res.newNames.length} nieuw patroon: <b>${res.newNames.join(', ')}</b>` : '<br>Geen nieuwe patronen gevonden.';
+      if (isPatternOnly) {
+        return `✅ ${source} (Patronen-check): ${res.patterns} patronen gecontroleerd.<br>` +
+          `Nieuwe patronen toegevoegd zonder je voortgang aan te passen.${nieuw}`;
+      }
+      return `✅ ${source}: ${res.patterns} patronen gelezen (${res.koi} koi + ${res.dragon} dragons in de sheet).<br>` +
+        `${res.changed} cellen bijgewerkt.${nieuw}`;
+    }
+    function overwriteOn() { return document.getElementById('opt-overwrite').checked; }
+    function patternSyncOn() { return true; }
+
+    function handleFileImport(event) {
+      const file = event.target.files[0];
+      event.target.value = '';
+      if (!file) return;
+      const name = file.name.toLowerCase();
+      const reader = new FileReader();
+      if (name.endsWith('.json')) {
+        reader.onload = e => {
+          try { userProgress = JSON.parse(e.target.result); saveUserProgress(); renderPatterns(); showStatus('✅ JSON back-up geïmporteerd.', 'ok'); }
+          catch (err) { showStatus('❌ Ongeldig JSON-bestand.', 'err'); }
+        };
+        reader.readAsText(file);
+      } else {
+        reader.onload = e => {
+          try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            importWorkbook(wb, 'Excel');
+          } catch (err) { showStatus('❌ Kon het bestand niet lezen: ' + err.message, 'err'); }
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    }
+
+    function importWorkbook(wb, label) {
+      let parsed = [];
+      const perSheet = [];
+      wb.SheetNames.forEach(sn => {
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', blankrows: true });
+        const found = sn.toLowerCase().includes('progressive') ? parseProgressivesGrid(rows) : parseGrid(rows);
+        if (found.length) perSheet.push(`${sn} (${found.length})`);
+        parsed = parsed.concat(found);
+      });
+      if (!parsed.length) {
+        showStatus(`❌ Geen patronen gevonden. Bladen in dit bestand: ${wb.SheetNames.join(', ')}.`, 'err');
+        return null;
+      }
+      const res = applyParsed(parsed, overwriteOn(), patternSyncOn());
+      showStatus(summaryHtml(res, label, patternSyncOn()) + `<br><small>Bladen: ${perSheet.join(', ')}</small>`, 'ok');
+      return res;
+    }
+
+    function sheetId(url) { const m = String(url || '').match(/\/d\/([a-zA-Z0-9_-]{15,})/); return m ? m[1] : null; }
+
+    async function fetchWithTimeout(url, ms = 10000) {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), ms);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(id);
+        return res;
+      } catch (e) {
+        clearTimeout(id);
+        throw e;
+      }
+    }
+
+    function fetchSheetJSONP(id, sheetName) {
+      return new Promise((resolve, reject) => {
+        const cbName = 'zk2Cb_' + Math.random().toString(36).slice(2);
+        const script = document.createElement('script');
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error('Time-out bij ophalen van ' + (sheetName || 'sheet')));
+        }, 10000);
+
+        function cleanup() {
+          clearTimeout(timer);
+          delete window[cbName];
+          script.remove();
+        }
+
+        window[cbName] = (res) => {
+          cleanup();
+          if (!res || res.status === 'error' || !res.table) {
+            reject(new Error((res && res.errors && res.errors[0] && res.errors[0].detailed_message) || 'Kan sheet niet lezen'));
+            return;
+          }
+          const rows = [];
+          const cols = res.table.cols || [];
+          if (cols.some(c => c && c.label)) {
+            rows.push(cols.map(c => (c && c.label) ? c.label : ''));
+          }
+          (res.table.rows || []).forEach(r => {
+            rows.push((r.c || []).map(cell => cell ? (cell.v != null ? cell.v : (cell.f || '')) : ''));
+          });
+          resolve(rows);
+        };
+
+        script.onerror = () => {
+          cleanup();
+          reject(new Error('Geblokkeerd of sheet is niet openbaar'));
+        };
+
+        let url = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=responseHandler:${cbName}`;
+        if (sheetName) url += `&sheet=${encodeURIComponent(sheetName)}`;
+        script.src = url;
+        document.head.appendChild(script);
+      });
+    }
+
+    async function fetchSheetData(id, ignoreProgress) {
+      let parsed = [], errors = [];
+      let validNames = new Set();
+
+      try {
+        const overviewRows = await fetchSheetJSONP(id, 'Overview');
+        overviewRows.forEach(row => {
+          row.forEach(cell => {
+            const clean = cellStr(cell);
+            if (clean && clean.length > 1 && !/^\d+$/.test(clean) && !/^(koi|dragon|common|rare)/i.test(clean)) {
+              validNames.add(clean);
+            }
+          });
+        });
+      } catch (e) {
+        try {
+          const indexRows = await fetchSheetJSONP(id, 'Index');
+          indexRows.forEach(row => {
+            row.forEach(cell => {
+              const clean = cellStr(cell);
+              if (clean && clean.length > 1) validNames.add(clean);
+            });
+          });
+        } catch (err) {}
+      }
+
+      // 1. Haal de collector-tabbladen op
+      for (const sn of DEFAULT_SHEETS) {
+        try {
+          const rows = await fetchSheetJSONP(id, sn);
+          const found = parseGrid(rows, validNames);
+          if (found.length) parsed = parsed.concat(found);
+        } catch (e) { errors.push(e.message); }
+      }
+
+      // 2. Haal het Progressives tabblad op
+      try {
+        const progRows = await fetchSheetJSONP(id, 'Progressives');
+        const progFound = parseProgressivesGrid(progRows);
+        if (progFound.length) parsed = parsed.concat(progFound);
+      } catch (e) {
+        // Tabblad eventueel nog niet aanwezig of naam wijkt iets af
+      }
+
+      if (!parsed.length) {
+        throw new Error(errors.filter(Boolean).join(' | ') || 'Geen patronen herkend in de sheet');
+      }
+      return applyParsed(parsed, overwriteOn(), ignoreProgress);
+    }
+
+    async function syncFromDrive(silent) {
+      const driveUrl = settings.driveUrl, patternUrl = HARDCODED_PATTERN_URL;
+      const driveId = sheetId(driveUrl);
+      const patternId = sheetId(patternUrl);
+
+      if (!driveId && !patternId) {
+        if (!silent) showStatus('❌ Vul ten minste één geldige Google Sheets-link in.', 'err');
+        return;
+      }
+
+      showStatus('⏳ Synchroniseren met Google Sheets…', '');
+      let messages = [];
+      let successCount = 0;
+
+      if (patternSyncOn() && patternId) {
+        try {
+          const resPattern = await fetchSheetData(patternId, true);
+          messages.push(summaryHtml(resPattern, 'Patronen-sheet', true));
+          successCount++;
+        } catch (e) {
+          messages.push(`❌ Patronen-sheet mislukt: <small>${e.message}</small>`);
+        }
+      }
+
+      if (driveId) {
+        try {
+          const resDrive = await fetchSheetData(driveId, false);
+          messages.push(summaryHtml(resDrive, 'Voortgangs-sheet', false));
+          successCount++;
+        } catch (e) {
+          messages.push(`❌ Voortgangs-sheet mislukt: <small>${e.message}</small>`);
+        }
+      }
+
+      if (successCount === 0) {
+        showStatus(messages.join('<br>'), 'err');
+        return;
+      }
+
+      settings.lastSync = new Date().toISOString();
+      saveSettings();
+      showStatus(messages.join('<hr style="border-color:var(--border);margin:8px 0">') + `<br><small>Laatste sync: ${new Date(settings.lastSync).toLocaleString('nl-NL')}</small>`, 'ok');
+    }
+
+    function saveDriveUrl() {
+      settings.driveUrl = document.getElementById('drive-url').value.trim();
+      settings.patternUrl = HARDCODED_PATTERN_URL;
+      settings.autoSync = document.getElementById('opt-autosync').checked;
+      settings.overwrite = overwriteOn();
+      settings.patternSync = true;
+      saveSettings();
+    }
+
+    function closeModal() { document.getElementById('detail-modal').style.display = 'none'; }
+    function openSettings() { document.getElementById('settings-modal').style.display = 'block'; }
+    function closeSettings() { document.getElementById('settings-modal').style.display = 'none'; }
+    function showHome() { closeSettings(); closeModal(); }
+
+    function exportJSON() {
+      const a = document.createElement('a');
+      a.href = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(userProgress));
+      a.download = `zk2_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+    function resetAllData() {
+      if (confirm('Weet je zeker dat je alle verzamelde vis- en dragongegevens wilt wissen?')) {
+        userProgress = {}; saveUserProgress(); renderPatterns(); closeSettings();
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      try {
+        userProgress = loadJSON(LS_PROGRESS, {});
+        customPatterns = loadJSON(LS_PATTERNS, {});
+        settings = loadJSON(LS_SETTINGS, {});
+        rebuildPatterns();
+
+        const driveInput = document.getElementById('drive-url');
+        const patternInput = document.getElementById('pattern-url');
+        const autoSyncOpt = document.getElementById('opt-autosync');
+        const overwriteOpt = document.getElementById('opt-overwrite');
+        const patternSyncOpt = document.getElementById('opt-pattern-sync');
+
+        if (driveInput) driveInput.value = settings.driveUrl || '';
+        if (patternInput) patternInput.value = settings.patternUrl || '';
+        if (autoSyncOpt) autoSyncOpt.checked = !!settings.autoSync;
+        if (overwriteOpt) overwriteOpt.checked = settings.overwrite !== false;
+        if (patternSyncOpt) patternSyncOpt.checked = !!settings.patternSync;
+
+        renderPatterns();
+        if ((settings.driveUrl || settings.patternUrl) && settings.autoSync) {
+          syncFromDrive(true);
+        }
+      } catch (e) {
+        console.error("Fout bij opstarten:", e);
+      }
+    });
+  </script>
+</body>
+</html>
