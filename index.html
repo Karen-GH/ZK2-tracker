@@ -313,6 +313,17 @@
 
     function parseProgressivesGrid(rows) {
       const out = [];
+
+      // 1. Haal direct de officiële lijst van patroonnamen op uit A2:A32 (rij 1 t/m 31 in 0-based index)
+      const validPatternNames = new Set();
+      for (let r = 1; r <= 31 && r < rows.length; r++) {
+        const row = rows[r] || [];
+        const nameVal = cellStr(row[0]).trim(); // Kolom A is index 0
+        if (nameVal && nameVal.length >= 2 && !nameVal.endsWith('-') && !/^ku-/i.test(nameVal)) {
+          validPatternNames.add(nameVal.toLowerCase());
+        }
+      }
+
       const startCols = [8, 19, 30]; // Kolommen I, T, AE (3 kolommen van patronen naast elkaar)
 
       for (let r = 1; r < rows.length; r++) {
@@ -320,8 +331,16 @@
 
         startCols.forEach(startCol => {
           for (let c = startCol; c < startCol + 3 && c < row.length; c++) {
-            const name = cellStr(row[c]);
-            if (!name || name.length < 2 || name.endsWith('-') || name.endsWith('-') || /^\d+$/.test(name) || /^(koi|dragon|common|rare|-)/i.test(name)) continue;
+            // Gebruik .trim() om onzichtbare spaties weg te halen
+            const name = cellStr(row[c]).trim();
+
+            // Basisinvoer validatie
+            if (!name || name.length < 2 || /^\d+$/.test(name) || /^(koi|dragon|common|rare|-)/i.test(name)) continue;
+
+            // VALIDATIE: Check of de gevonden naam exact voorkomt in onze officiële A2:A32 lijst
+            // En blokkeer specifiek 'Ku-' of namen die eindigen op een streepje
+            if (name.endsWith('-') || /^ku-/i.test(name)) continue;
+            if (validPatternNames.size > 0 && !validPatternNames.has(name.toLowerCase())) continue;
 
             let headRowIdx = -1;
             let cStartCol = -1;
@@ -869,7 +888,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
       try {
         userProgress = loadJSON(LS_PROGRESS, {});
-        customPatterns = loadJSON(LS_PATTERNS, {});
+        //customPatterns = loadJSON(LS_PATTERNS, {});
         settings = loadJSON(LS_SETTINGS, {});
 
         // 1. Zorg dat de URL-velden netjes worden ingevuld als ze er zijn
