@@ -152,7 +152,7 @@
       <input type="url" id="drive-url" class="drive-url-input" placeholder="https://docs.google.com/spreadsheets/d/…" onchange="saveDriveUrl()">
       <label class="opt"><input type="checkbox" id="opt-autosync" onchange="saveDriveUrl()"> Automatisch synchroniseren bij openen</label>
       <label class="opt"><input type="checkbox" id="opt-overwrite" onchange="saveDriveUrl()"> Sheet overschrijft mijn lokale voortgang</label>
-
+      <label class="opt"><input type="checkbox" id="opt-pattern-sync"> Automatisch patronen ophalen bij opstarten</label>
       <button class="btn btn-primary" onclick="saveDriveUrl(); syncFromDrive(false)">🔄 Nu synchroniseren</button>
 
       <div id="sync-status" class="status"></div>
@@ -876,7 +876,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
       try {
         userProgress = loadJSON(LS_PROGRESS, {});
-        //customPatterns = loadJSON(LS_PATTERNS, {});
+        customPatterns = loadJSON(LS_PATTERNS, {});
         settings = loadJSON(LS_SETTINGS, {});
 
         // 1. Zorg dat de URL-velden netjes worden ingevuld als ze er zijn
@@ -890,16 +890,21 @@
         if (patternInput) patternInput.value = settings.patternUrl || '';
         if (autoSyncOpt) autoSyncOpt.checked = !!settings.autoSync;
         if (overwriteOpt) overwriteOpt.checked = settings.overwrite !== false;
+
+        // Zorg dat de status van het nieuwe vinkje correct wordt ingeladen
+        // (standaard uit [false] als de gebruiker het nog nooit heeft aangezet)
         if (patternSyncOpt) patternSyncOpt.checked = !!settings.patternSync;
 
-        // 2. HAAL ALTIJD DIRECT DE VERSE PATRONEN OP BIJ OPSTARTEN (gebruik 'true' om de UI stil te verversen)
-        // Zorg dat syncFromDrive overweg kan met jouw hardcoded patroon-URL
-        await syncFromDrive(true);
-
-        // 3. Bouw en render pas nádat de verse data binnen is
+        // Bouw eerst de patronen op basis van de lokale/reeds bekende data
         rebuildPatterns();
         renderPatterns();
 
+        // ALLEEN ALS HET VINKJE AANSTAAT: haal de master-patronen vers op bij opstarten
+        if (patternSyncOpt && patternSyncOpt.checked) {
+          await syncFromDrive(true);
+          rebuildPatterns();
+          renderPatterns();
+        }
       } catch (e) {
         console.error("Fout bij opstarten:", e);
       }
