@@ -652,16 +652,7 @@
       el.className = 'status ' + (kind || '');
       el.innerHTML = msg;
     }
-    function summaryHtml(res, source, isPatternOnly) {
-      const nieuw = res.newNames.length
-        ? `<br>🆕 ${res.newNames.length} nieuw patroon: <b>${res.newNames.join(', ')}</b>` : '<br>Geen nieuwe patronen gevonden.';
-      if (isPatternOnly) {
-        return `✅ ${source} (Patronen-check): ${res.patterns} patronen gecontroleerd.<br>` +
-          `Nieuwe patronen toegevoegd zonder je voortgang aan te passen.${nieuw}`;
-      }
-      return `✅ ${source}: ${res.patterns} patronen gelezen (${res.koi} koi + ${res.dragon} dragons in de sheet).<br>` +
-        `${res.changed} cellen bijgewerkt.${nieuw}`;
-    }
+
     function overwriteOn() { return document.getElementById('opt-overwrite').checked; }
     function patternSyncOn() { return true; }
 
@@ -702,7 +693,6 @@
         return null;
       }
       const res = applyParsed(parsed, overwriteOn(), patternSyncOn());
-      showStatus(summaryHtml(res, label, patternSyncOn()) + `<br><small>Bladen: ${perSheet.join(', ')}</small>`, 'ok');
       return res;
     }
 
@@ -832,7 +822,6 @@
       if (patternSyncOn() && patternId) {
         try {
           const resPattern = await fetchSheetData(patternId, true);
-          messages.push(summaryHtml(resPattern, 'Patronen-sheet', true));
           successCount++;
         } catch (e) {
           messages.push(`❌ Patronen-sheet mislukt: <small>${e.message}</small>`);
@@ -842,7 +831,6 @@
       if (driveId) {
         try {
           const resDrive = await fetchSheetData(driveId, false);
-          messages.push(summaryHtml(resDrive, 'Voortgangs-sheet', false));
           successCount++;
         } catch (e) {
           messages.push(`❌ Voortgangs-sheet mislukt: <small>${e.message}</small>`);
